@@ -57,7 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["grafbase", "dev", "--port", "5050"]
+    command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5050"]
     # command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5050"]
     ports:
       - "5050:5050"
@@ -65,6 +65,7 @@ services:
       - countries-rest
     environment:
       NODE_ENV: production
+      COUNTRIES_BASE_URL: http://countries-rest:3004
     # healthcheck:
     #   test: ["CMD", "wget", "-q", "-O-", "http://localhost:5050"]
     #   interval: 5s

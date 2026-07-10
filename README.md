@@ -12,6 +12,10 @@ https://github.com/grafbase/grafbase/tree/main/examples/rest-extension
 
 
 Useful cmds
+add this line in schema . graphql
+
+@restEndpoint(name: "countries", baseURL: "http://localhost:3004")
+
 npx grafbase dev --port 5050
 
 docker compose up --build -d
