@@ -65,7 +65,7 @@ services:
   #   environment:
   #     NODE_ENV: production
   #   healthcheck:
-  #     test: ["CMD", "wget", "-q", "-O-", "http://localhost:5000"]
+  #     test: ["CMD", "wget", "-q", "-O-", "http://localhost:5001"]
   #     interval: 5s
   #     timeout: 3s
   #     retries: 5

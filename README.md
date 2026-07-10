@@ -17,7 +17,7 @@ docker compose up --build -d
 main----
 docker compose down && docker compose up --build -d && sleep 5 && docker compose ps
 
-
+docker compose build --no-cache grafbase
 
 docker useful cmds
 

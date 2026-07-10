@@ -1,17 +1,17 @@
-FROM node:24-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy project files
 COPY grafbase.toml .
 COPY schema.graphql .
 COPY grafbase_extensions ./grafbase_extensions
 
-# Install Grafbase CLI
-RUN npm install -g @grafbase/cli
+RUN npm install -g grafbase
 
-# Expose GraphQL port
+RUN npm list -g --depth=0
+RUN which grafbase || true
+RUN grafbase --version || true
+
 EXPOSE 5000
 
-# Run Grafbase dev server
-CMD ["grafbase", "dev", "--listen-address", "0.0.0.0:5000"]
+CMD ["sh"]

@@ -1,0 +1,28 @@
+meta {
+  name: graphql
+  type: graphql
+  seq: 5
+}
+
+post {
+  url: http://127.0.0.1:5000/graphql
+  body: graphql
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query {
+    countries {
+      name
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
