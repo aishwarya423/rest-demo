@@ -1,0 +1,32 @@
+meta {
+  name: List Policies
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query ListPolicies($accountId: ID) {
+    policies(accountId: $accountId) {
+      id
+      policyNumber
+      productName
+      status
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "accountId": "acct-1001"
+  }
+}

@@ -1,0 +1,42 @@
+meta {
+  name: Account by ID
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query AccountById($id: ID!) {
+    account(id: $id) {
+      id
+      holderName
+      accountType
+      totalValue
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": "acct-1001"
+  }
+}
+
+docs {
+  Mirrors the canonical demo curl:
+  curl -X POST http://localhost:5050/graphql \
+    -H "Content-Type: application/json" \
+    -d '{"query":"{ account(id:\"acct-1001\") { holderName totalValue } }"}'
+
+  First call → cache MISS; subsequent calls within TTL (120s) → cache HIT.
+  Verify cache writes with: docker exec grafbasepoc-valkey-1 valkey-cli KEYS "*"
+}

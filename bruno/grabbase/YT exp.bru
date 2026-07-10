@@ -1,0 +1,30 @@
+meta {
+  name: YT exp
+  type: graphql
+  seq: 3
+}
+
+post {
+  url: http://127.0.0.1:4000/graphql
+  body: graphql
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  {
+      listAllCountries {
+          name
+          region
+          tlds
+      }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

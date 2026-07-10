@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Grafbase POC — Valkey Cache Tests",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

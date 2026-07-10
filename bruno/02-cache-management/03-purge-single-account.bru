@@ -1,0 +1,27 @@
+meta {
+  name: Purge — single account (Account:acct-1001)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{accountsMgmt}}/purge
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "tags": ["Account:acct-1001"]
+  }
+}
+
+docs {
+  Instant tag-based invalidation — no TTL wait.
+  Response: { "purgedKeys": N, "purgedTags": 1, "keys": [...] }
+  Demo flow: run "Account by ID" → run this → run "Account by ID" again → cache MISS.
+}

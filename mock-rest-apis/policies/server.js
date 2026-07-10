@@ -2,9 +2,7 @@ const http = require("http");
 
 //To run locally on 3 diffrent ports at a time : comment below 2 lines, serviceName and port
 // const PORTS = {
-//   accounts: Number(process.env.ACCOUNTS_PORT || 3001),
 //   policies: Number(process.env.POLICIES_PORT || 3002),
-//   funds:    Number(process.env.FUNDS_PORT    || 3003),
 // };
 
 
@@ -14,58 +12,6 @@ const http = require("http");
 const serviceName = process.env.SERVICE_NAME || "accounts";
 const port = Number(process.env.PORT || 3001);
 const expectedApiKey = process.env.EXPECTED_API_KEY || "";
-
-const accounts = [
-  {
-    id: "acct-1001",
-    customerId: "cust-501",
-    holderName: "Anika Rao",
-    accountType: "PENSION",
-    status: "ACTIVE",
-    openedDate: "2016-04-18",
-    pensionProvider: "Northstar Retirement",
-    riskProfile: "BALANCED",
-    totalValue: 186420.75,
-    contributionRate: 8.5,
-    fundHoldings: [
-      { fundId: "fund-global-equity", allocationPercent: 45, units: 1230.52, currentValue: 83900.12 },
-      { fundId: "fund-green-bond", allocationPercent: 30, units: 812.08, currentValue: 55926.22 },
-      { fundId: "fund-cash-plus", allocationPercent: 25, units: 512.2, currentValue: 46594.41 }
-    ]
-  },
-  {
-    id: "acct-1002",
-    customerId: "cust-501",
-    holderName: "Anika Rao",
-    accountType: "INVESTMENT_ISA",
-    status: "ACTIVE",
-    openedDate: "2020-09-02",
-    pensionProvider: null,
-    riskProfile: "GROWTH",
-    totalValue: 74280.1,
-    contributionRate: 0,
-    fundHoldings: [
-      { fundId: "fund-tech-growth", allocationPercent: 60, units: 412.4, currentValue: 44568.06 },
-      { fundId: "fund-global-equity", allocationPercent: 40, units: 435.11, currentValue: 29712.04 }
-    ]
-  },
-  {
-    id: "acct-2001",
-    customerId: "cust-902",
-    holderName: "Noah Bennett",
-    accountType: "PENSION",
-    status: "ACTIVE",
-    openedDate: "2012-01-10",
-    pensionProvider: "Cedar Pension Trust",
-    riskProfile: "CAUTIOUS",
-    totalValue: 254920.4,
-    contributionRate: 6,
-    fundHoldings: [
-      { fundId: "fund-green-bond", allocationPercent: 50, units: 1820.33, currentValue: 127460.2 },
-      { fundId: "fund-cash-plus", allocationPercent: 50, units: 1188.67, currentValue: 127460.2 }
-    ]
-  }
-];
 
 const policies = [
   {
@@ -126,67 +72,7 @@ const policies = [
   }
 ];
 
-const funds = [
-  {
-    id: "fund-global-equity",
-    isin: "GB00GLBEQ001",
-    name: "Global Equity Index",
-    assetClass: "EQUITY",
-    currency: "GBP",
-    riskRating: 5,
-    ongoingChargePercent: 0.18,
-    oneYearReturnPercent: 12.4,
-    threeYearReturnPercent: 28.6,
-    sustainabilityLabel: "STANDARD"
-  },
-  {
-    id: "fund-green-bond",
-    isin: "GB00GRNBD002",
-    name: "Green Bond Income",
-    assetClass: "FIXED_INCOME",
-    currency: "GBP",
-    riskRating: 3,
-    ongoingChargePercent: 0.22,
-    oneYearReturnPercent: 5.8,
-    threeYearReturnPercent: 13.2,
-    sustainabilityLabel: "SUSTAINABLE"
-  },
-  {
-    id: "fund-cash-plus",
-    isin: "GB00CASHP003",
-    name: "Cash Plus Reserve",
-    assetClass: "CASH",
-    currency: "GBP",
-    riskRating: 1,
-    ongoingChargePercent: 0.08,
-    oneYearReturnPercent: 4.1,
-    threeYearReturnPercent: 8.4,
-    sustainabilityLabel: "STANDARD"
-  },
-  {
-    id: "fund-tech-growth",
-    isin: "GB00TECHG004",
-    name: "Technology Growth Opportunities",
-    assetClass: "EQUITY",
-    currency: "GBP",
-    riskRating: 6,
-    ongoingChargePercent: 0.35,
-    oneYearReturnPercent: 18.9,
-    threeYearReturnPercent: 41.7,
-    sustainabilityLabel: "TRANSITION"
-  }
-];
-
 const openApiByService = {
-  accounts: {
-    openapi: "3.0.3",
-    info: { title: "Accounts REST API", version: "1.0.0" },
-    paths: {
-      "/accounts": { get: { summary: "List accounts" } },
-      "/accounts/{id}": { get: { summary: "Get account by id" } },
-      "/customers/{customerId}/accounts": { get: { summary: "List accounts for a customer" } }
-    }
-  },
   policies: {
     openapi: "3.0.3",
     info: { title: "Policies REST API", version: "1.0.0" },
@@ -195,15 +81,6 @@ const openApiByService = {
       "/policies/{id}": { get: { summary: "Get policy by id" } },
       "/accounts/{accountId}/policies": { get: { summary: "List policies for an account" } },
       "/funds/{fundId}/policies": { get: { summary: "List policies linked to a fund" } }
-    }
-  },
-  funds: {
-    openapi: "3.0.3",
-    info: { title: "Funds REST API", version: "1.0.0" },
-    paths: {
-      "/funds": { get: { summary: "List funds" } },
-      "/funds/{id}": { get: { summary: "Get fund by id" } },
-      "/accounts/{accountId}/funds": { get: { summary: "List funds held by an account" } }
     }
   }
 };
@@ -253,9 +130,7 @@ function makeRouter(serviceName) {
 
     if (!authorize(req, res)) return;
 
-    if (serviceName === "accounts") return accountsRouter(url, res);
     if (serviceName === "policies") return policiesRouter(url, res);
-    if (serviceName === "funds") return fundsRouter(url, res);
   };
 }
 
@@ -284,24 +159,6 @@ function policiesRouter(url, res) {
   }
   if (parts[0] === "funds" && parts[2] === "policies") {
     return sendJson(res, 200, policies.filter((item) => item.fundIds.includes(parts[1])));
-  }
-  return notFound(res);
-}
-
-function fundsRouter(url, res) {
-  const parts = url.pathname.split("/").filter(Boolean);
-  if (url.pathname === "/funds") return sendJson(res, 200, funds);
-  if (parts[0] === "funds" && parts[1]) {
-    const fund = funds.find((item) => item.id === parts[1]);
-    return fund ? sendJson(res, 200, fund) : notFound(res);
-  }
-  if (parts[0] === "accounts" && parts[2] === "funds") {
-    const account = accounts.find((item) => item.id === parts[1]);
-    if (!account) return notFound(res);
-    const accountFunds = account.fundHoldings
-      .map((holding) => funds.find((fund) => fund.id === holding.fundId))
-      .filter(Boolean);
-    return sendJson(res, 200, accountFunds);
   }
   return notFound(res);
 }

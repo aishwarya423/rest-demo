@@ -1,0 +1,43 @@
+meta {
+  name: Fund by ID
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query FundById($id: ID!) {
+    fund(id: $id) {
+      id
+      name
+      assetClass
+      riskRating
+      sustainabilityLabel
+      oneYearReturnPercent
+      linkedPolicies {
+        policyNumber
+        status
+      }
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": "fund-001"
+  }
+}
+
+docs {
+  Funds subgraph TTL = 300s (longest — prices update daily).
+  linkedPolicies field is resolved by the policies subgraph (cross-subgraph join).
+}

@@ -1,0 +1,41 @@
+meta {
+  name: Policy by ID
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query PolicyById($id: ID!) {
+    policy(id: $id) {
+      id
+      policyNumber
+      productName
+      status
+      account {
+        id
+        holderName
+      }
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": "pol-9001"
+  }
+}
+
+docs {
+  Policies subgraph TTL = 30s (shortest of the three).
+  Useful for TTL-expiry demo: query, wait 35s, query again → cache MISS.
+}

@@ -1,0 +1,16 @@
+meta {
+  name: Health — accounts subgraph
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{accountsMgmt}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  Returns { "service": "accounts", "cache": "ready" } when Valkey is connected.
+  Swap {{accountsMgmt}} → {{policiesMgmt}} or {{fundsMgmt}} for the other subgraphs.
+}

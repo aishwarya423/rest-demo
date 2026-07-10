@@ -9,3 +9,15 @@ This example demonstrates how to use the [REST extension](https://grafbase.com/e
 
 
 https://github.com/grafbase/grafbase/tree/main/examples/rest-extension
+
+
+Useful cmds
+
+docker compose up --build -d
+docker compose down && docker compose up --build -d && sleep 5 && docker compose ps
+
+
+
+docker useful cmds
+
+docker compose down --remove-orphans && lsof -iTCP:3001 -sTCP:LISTEN | grep -v COMMAND | awk '{print $2}' | xargs kill -9 2>/dev/null || true && sleep 2 && docker compose up --build -d && sleep 5 && docker compose ps

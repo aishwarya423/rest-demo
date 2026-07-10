@@ -1,0 +1,26 @@
+meta {
+  name: test request
+  type: graphql
+  seq: 1
+}
+
+post {
+  url: http://127.0.0.1:4000/graphql
+  body: graphql
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  {
+    __typename
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

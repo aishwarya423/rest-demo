@@ -1,0 +1,56 @@
+meta {
+  name: Account — Full Portfolio (federation join)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query InsurancePortfolio($id: ID!) {
+    account(id: $id) {
+      id
+      holderName
+      accountType
+      totalValue
+      policies {
+        policyNumber
+        productName
+        status
+        linkedFunds {
+          name
+          assetClass
+          oneYearReturnPercent
+        }
+      }
+      fundHoldings {
+        allocationPercent
+        currentValue
+        fund {
+          name
+          riskRating
+          sustainabilityLabel
+        }
+      }
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "id": "acct-1001"
+  }
+}
+
+docs {
+  Cross-subgraph query — accounts + policies + funds all participate.
+  Best demo of federation hitting multiple subgraph caches in parallel.
+}

@@ -1,0 +1,16 @@
+meta {
+  name: List cache keys for a tag
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{accountsMgmt}}/tags/Account:acct-1001
+  body: none
+  auth: none
+}
+
+docs {
+  Returns every cache key currently registered under the given tag.
+  Example response: { "tag": "Account:acct-1001", "keys": ["subgraph:accounts:/accounts/acct-1001"] }
+}

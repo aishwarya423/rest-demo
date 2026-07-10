@@ -1,0 +1,25 @@
+meta {
+  name: Purge — all accounts (bulk by type tag)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{accountsMgmt}}/purge
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "tags": ["Account"]
+  }
+}
+
+docs {
+  Bulk invalidation of every cached account entry on the accounts subgraph.
+}

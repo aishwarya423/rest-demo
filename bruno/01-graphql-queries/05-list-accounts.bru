@@ -1,0 +1,37 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{gatewayUrl}}/graphql
+  body: graphql
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:graphql {
+  query ListAccounts($customerId: ID) {
+    accounts(customerId: $customerId) {
+      id
+      holderName
+      accountType
+      totalValue
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "customerId": null
+  }
+}
+
+docs {
+  Set customerId to filter (e.g. "cust-1") or leave null for all accounts.
+  Cache key changes with the variable — null → /accounts, set → /customers/<id>/accounts.
+}

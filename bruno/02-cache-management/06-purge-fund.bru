@@ -1,0 +1,21 @@
+meta {
+  name: Purge — single fund (Fund:fund-001)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{fundsMgmt}}/purge
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "tags": ["Fund:fund-001"]
+  }
+}
