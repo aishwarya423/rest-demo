@@ -1,0 +1,5 @@
+[extensions.rest]
+path = "grafbase_extensions/rest/0.5.2"
+
+[subgraphs.countries]
+schema_path = "schema.graphql"

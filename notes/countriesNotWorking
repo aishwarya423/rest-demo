@@ -1,0 +1,16 @@
+
+The config is minimal, so the likely cause is that Grafbase is serving the endpoint behind a different route or that the dev server isn’t actually running with the expected GraphQL endpoint. I’m verifying the server output and the generated routes.
+
+
+Getting 403 on request
+ps -ef | grep '[g]rafbase' || true && lsof -iTCP:5000 -sTCP:LISTEN || true
+
+
+I’m verifying the actual port and response path from the running Grafbase process so I can give you a working request instead of a guessed URL.
+
+
+curl -i -X POST http://127.0.0.1:5000/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
+
+
+curl -sS 'https://restcountries.com/v3.1/all?fields=name' | head -c 400 && echo '
+---' && curl -sS 'https://restcountries.com/v3.1/all?fields=name' | python -m json.tool | head -80
