@@ -12,6 +12,7 @@ https://github.com/grafbase/grafbase/tree/main/examples/rest-extension
 
 
 Useful cmds
+npx grafbase dev --port 5050
 
 docker compose up --build -d
 main----

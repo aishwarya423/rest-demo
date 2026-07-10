@@ -24,7 +24,7 @@ countries REST API listening on port 3001
 In a new terminal, from the project root:
 
 ```bash
-npx grafbase dev
+ % npx grafbase dev --port 5050
 ```
 
 You should see output like:

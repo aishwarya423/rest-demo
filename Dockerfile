@@ -12,6 +12,6 @@ RUN npm list -g --depth=0
 RUN which grafbase || true
 RUN grafbase --version || true
 
-EXPOSE 5000
+EXPOSE 5050
 
 CMD ["sh"]

@@ -12,10 +12,10 @@ curl -sS http://localhost:3001/all?fields=name
 curl -sS 'http://localhost:3001/all?fields=name'
 
 
-curl -i -X POST http://127.0.0.1:5000/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
+curl -i -X POST http://127.0.0.1:5050/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
 
 
 
 cd /Users/aishwaryapalarapu/Desktop/aishprojects/rest-demo && pkill -f 'grafbase dev' || true && sleep 2 && npx grafbase dev > /tmp/grafbase-dev.log 2>&1 &
 sleep 3
-curl -i -X POST http://127.0.0.1:5000/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
+curl -i -X POST http://127.0.0.1:5050/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'

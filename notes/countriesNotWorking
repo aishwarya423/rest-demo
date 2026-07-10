@@ -9,7 +9,7 @@ ps -ef | grep '[g]rafbase' || true && lsof -iTCP:5000 -sTCP:LISTEN || true
 I’m verifying the actual port and response path from the running Grafbase process so I can give you a working request instead of a guessed URL.
 
 
-curl -i -X POST http://127.0.0.1:5000/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
+curl -i -X POST http://127.0.0.1:5050/graphql -H 'Content-Type: application/json' --data '{"query":"query { countries { name } }"}'
 
 
 curl -sS 'https://restcountries.com/v3.1/all?fields=name' | head -c 400 && echo '

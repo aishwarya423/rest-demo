@@ -53,22 +53,23 @@ services:
   #     timeout: 3s
   #     retries: 5
 
-  # grafbase:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5000"]
-  #   ports:
-  #     - "5001:5000"
-  #   depends_on:
-  #     - countries-rest
-  #   environment:
-  #     NODE_ENV: production
-  #   healthcheck:
-  #     test: ["CMD", "wget", "-q", "-O-", "http://localhost:5001"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 5
+  grafbase:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["grafbase", "dev", "--port", "5050"]
+    # command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5050"]
+    ports:
+      - "5050:5050"
+    depends_on:
+      - countries-rest
+    environment:
+      NODE_ENV: production
+    # healthcheck:
+    #   test: ["CMD", "wget", "-q", "-O-", "http://localhost:5050"]
+    #   interval: 5s
+    #   timeout: 3s
+    #   retries: 5
 
   # GraphiQL UI (optional)
   # Uncomment to enable GraphiQL explorer on http://localhost:8080
@@ -77,7 +78,7 @@ services:
   #   ports:
   #     - "8080:8080"
   #   environment:
-  #     GRAPHQL_ENDPOINT: http://grafbase:5000/graphql
+  #     GRAPHQL_ENDPOINT: http://grafbase:5050/graphql
   #   depends_on:
   #     - grafbase
 
