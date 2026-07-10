@@ -14,6 +14,7 @@ https://github.com/grafbase/grafbase/tree/main/examples/rest-extension
 Useful cmds
 
 docker compose up --build -d
+main----
 docker compose down && docker compose up --build -d && sleep 5 && docker compose ps
 
 

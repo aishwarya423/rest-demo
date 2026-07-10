@@ -1,4 +1,35 @@
 services:
+
+  accounts-rest:
+    build:
+      context: ./mock-rest-apis/accounts
+    environment:
+      SERVICE_NAME: accounts
+      PORT: 3000
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports:
+      - "3001:3001"
+
+  policies-rest:
+    build:
+      context: ./mock-rest-apis/policies
+    environment:
+      SERVICE_NAME: policies
+      PORT: 3000
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports:
+      - "3003:3003"
+
+  funds-rest:
+    build:
+      context: ./mock-rest-apis/funds
+    environment:
+      SERVICE_NAME: funds
+      PORT: 3000
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports:
+      - "3002:3002"
+
   countries-rest:
     build:
       context: ./mock-rest-apis
@@ -7,7 +38,7 @@ services:
       SERVICE_NAME: countries
       PORT: 3000
     ports:
-      - "3001:3000"
+      - "3004:3004"
 
   # valkey:
   #   image: valkey/valkey:8-alpine
@@ -22,22 +53,22 @@ services:
   #     timeout: 3s
   #     retries: 5
 
-  grafbase:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5000"]
-    ports:
-      - "5001:5000"
-    depends_on:
-      - countries-rest
-    environment:
-      NODE_ENV: production
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:5000"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+  # grafbase:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   command: ["grafbase", "dev", "--listen-address", "0.0.0.0:5000"]
+  #   ports:
+  #     - "5001:5000"
+  #   depends_on:
+  #     - countries-rest
+  #   environment:
+  #     NODE_ENV: production
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-q", "-O-", "http://localhost:5000"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 5
 
   # GraphiQL UI (optional)
   # Uncomment to enable GraphiQL explorer on http://localhost:8080
@@ -49,3 +80,11 @@ services:
   #     GRAPHQL_ENDPOINT: http://grafbase:5000/graphql
   #   depends_on:
   #     - grafbase
+
+  graphiql:
+    build:
+      context: ./explorer
+    ports:
+      - "8080:8080"
+    # depends_on:
+    #   - grafbase
