@@ -1,13 +1,143 @@
 extend schema
   @link(url: "https://grafbase.com/extensions/rest/0.5.2", import: ["@restEndpoint", "@rest"])
-  # @restEndpoint(name: "countries", baseURL: "http://countries-rest:3004")
-  @restEndpoint(name: "countries", baseURL: "http://localhost:3004")
+  @link(
+    url: "https://specs.grafbase.com/composite-schemas/v1"
+    import: ["@lookup", "@key", "@is", "@derive", "@require", "@inaccessible"]
+  )
 
-type Country {
-  name: String!
-}
+  # ---------------------------------------------------------------------------
+  # Three independent REST services, each declared as a named endpoint on this
+  # single virtual subgraph. Every service enforces X-Api-Key, so we forward a
+  # per-service key sourced from grafbase.toml config (-> env vars).
+  #
+  # baseURLs below use localhost ports for running `grafbase dev` on the host.
+  # When the gateway runs INSIDE docker-compose, swap them for the service DNS
+  # names shown in the trailing comment on each line.
+  # ---------------------------------------------------------------------------
+  @restEndpoint(
+    name: "accounts"
+    baseURL: "http://localhost:3001" # docker: http://accounts-rest:3001
+    headers: [{ name: "X-Api-Key", value: "{{ config.accountsApiKey }}" }]
+  )
+  @restEndpoint(
+    name: "policies"
+    baseURL: "http://localhost:3003" # docker: http://policies-rest:3003
+    headers: [{ name: "X-Api-Key", value: "{{ config.policiesApiKey }}" }]
+  )
+  @restEndpoint(
+    name: "funds"
+    baseURL: "http://localhost:3002" # docker: http://funds-rest:3002
+    headers: [{ name: "X-Api-Key", value: "{{ config.fundsApiKey }}" }]
+  )
 
 type Query {
-  countries: [Country!]!
-    @rest(http: { GET: "/all?fields=name" }, endpoint: "countries", selection: "[.[] | { name: .name.official }]")
+  # Entry point -> GET /accounts/{id}
+  account(id: ID!): Account
+    @rest(
+      endpoint: "accounts"
+      http: { GET: "/accounts/{{ args.id }}" }
+      selection: """
+      {
+        id,
+        customerId,
+        holderName,
+        accountType,
+        totalValue,
+        fundHoldings: [.fundHoldings[] | { fundId, allocationPercent, currentValue }]
+      }
+      """
+    )
+
+  # Convenience list -> GET /accounts
+  accounts: [Account!]!
+    @rest(
+      endpoint: "accounts"
+      http: { GET: "/accounts" }
+      selection: """
+      [.[] | {
+        id,
+        customerId,
+        holderName,
+        accountType,
+        totalValue,
+        fundHoldings: [.fundHoldings[] | { fundId, allocationPercent, currentValue }]
+      }]
+      """
+    )
+
+  # Internal entity lookup used by @derive to fan out funds.
+  # One call per id -> GET /funds/{id}. Hidden from clients via @inaccessible.
+  fund(id: ID!): Fund
+    @inaccessible
+    @lookup
+    @rest(
+      endpoint: "funds"
+      http: { GET: "/funds/{{ args.id }}" }
+      selection: """
+      {
+        id,
+        name,
+        assetClass,
+        riskRating,
+        oneYearReturnPercent,
+        sustainabilityLabel
+      }
+      """
+    )
+}
+
+type Account {
+  id: ID!
+  customerId: String!
+  holderName: String!
+  accountType: String!
+  totalValue: Float!
+  fundHoldings: [FundHolding!]!
+
+  # Parent account.id is injected as `accountId` via @require (hidden from the
+  # client) -> GET /accounts/{accountId}/policies on the policies service.
+  policies(accountId: ID! @require(field: "id")): [Policy!]!
+    @rest(
+      endpoint: "policies"
+      http: { GET: "/accounts/{{ args.accountId }}/policies" }
+      selection: """
+      [.[] | {
+        policyNumber,
+        productName,
+        status,
+        fundIds
+      }]
+      """
+    )
+}
+
+type FundHolding {
+  # Kept for the join, hidden from the public schema.
+  fundId: ID! @inaccessible
+  allocationPercent: Float!
+  currentValue: Float!
+
+  # Resolve the single holding fund via the Fund @lookup -> GET /funds/{fundId}
+  fund: Fund @derive @is(field: "{ id: fundId }")
+}
+
+type Policy {
+  policyNumber: String!
+  productName: String!
+  status: String!
+
+  # List of ids kept for the join, hidden from the public schema.
+  fundIds: [ID!]! @inaccessible
+
+  # Fan out one Fund @lookup per id -> GET /funds/{id} for each entry.
+  linkedFunds: [Fund!]! @derive @is(field: "fundIds[{ id: . }]")
+}
+
+type Fund @key(fields: "id") {
+  id: ID!
+  name: String!
+  assetClass: String!
+  riskRating: Int!
+  oneYearReturnPercent: Float!
+  sustainabilityLabel: String!
 }

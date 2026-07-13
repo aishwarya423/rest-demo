@@ -1,0 +1,174 @@
+I am building a Project using Grafbase Gateway REST Extensions to federate multiple independent REST APIs into a single GraphQL API.
+
+## Goal
+
+Create a unified GraphQL schema that fetches and joins data from three separate REST services without modifying any of the existing REST servers.
+
+The REST services must remain unchanged.
+
+## Tech Stack
+
+- Grafbase Gateway
+- REST Extension (@restEndpoint, @rest)
+- Rust Gateway Resolver Extension (if required)
+- Node.js mock REST APIs
+- Docker Compose for running all services
+
+## Existing REST Services
+
+### Accounts Service (localhost:3001)
+
+Endpoints:
+
+GET /accounts
+GET /accounts/{id}
+GET /customers/{customerId}/accounts
+
+Example account:
+
+{
+  "id": "acct-1001",
+  "customerId": "cust-501",
+  "holderName": "Anika Rao",
+  "accountType": "PENSION",
+  "totalValue": 186420.75,
+  "fundHoldings": [
+    {
+      "fundId": "fund-global-equity",
+      "allocationPercent": 45,
+      "currentValue": 83900.12
+    }
+  ]
+}
+
+-----------------------------------------
+
+### Policies Service (localhost:3003)
+
+Endpoints:
+
+GET /policies
+GET /policies/{id}
+GET /accounts/{accountId}/policies
+GET /funds/{fundId}/policies
+
+Example:
+
+{
+  "policyNumber": "LIF-UK-3001",
+  "accountId": "acct-1001",
+  "productName": "Family Life Protect",
+  "status": "IN_FORCE",
+  "fundIds": [
+    "fund-global-equity",
+    "fund-green-bond"
+  ]
+}
+
+-----------------------------------------
+
+### Funds Service (localhost:3002)
+
+Endpoints:
+
+GET /funds
+GET /funds/{id}
+
+Example:
+
+{
+  "id": "fund-global-equity",
+  "name": "Global Equity Index",
+  "assetClass": "EQUITY",
+  "riskRating": 5,
+  "oneYearReturnPercent": 12.4,
+  "sustainabilityLabel": "STANDARD"
+}
+
+-----------------------------------------
+
+## Desired GraphQL Query
+
+query InsurancePortfolio {
+  account(id: "acct-1001") {
+    id
+    holderName
+    accountType
+    totalValue
+
+    policies {
+      policyNumber
+      productName
+      status
+
+      linkedFunds {
+        name
+        assetClass
+        oneYearReturnPercent
+      }
+    }
+
+    fundHoldings {
+      allocationPercent
+      currentValue
+
+      fund {
+        name
+        riskRating
+        sustainabilityLabel
+      }
+    }
+  }
+}
+
+## Expected Behaviour
+
+Grafbase should automatically orchestrate these REST calls:
+
+1. GET /accounts/acct-1001
+
+2. GET /accounts/acct-1001/policies
+
+3. For each policy fundId:
+   GET /funds/{fundId}
+
+4. For each account fundHolding fundId:
+   GET /funds/{fundId}
+
+Then merge all results into one GraphQL response.
+
+## Important Constraints
+
+- Do NOT modify any REST server code.
+- Do NOT add new REST endpoints.
+- Do NOT change existing JSON responses.
+- Only modify the Grafbase project.
+- If the REST extension directives alone cannot perform this orchestration, implement a Grafbase Gateway Resolver Extension in Rust.
+- Follow Grafbase best practices.
+- Keep the solution clean and production-ready.
+
+## Existing Grafbase Setup
+
+I already have:
+
+- schema.graphql
+- grafbase.toml
+- grafbase_extensions/
+- Rust extension project
+- Docker Compose
+- Grafbase Gateway running
+
+## What I need from you
+
+Please:
+
+1. Analyze whether this can be implemented using only @rest directives.
+2. If not, explain why.
+3. Design the GraphQL schema.
+4. Implement the required Gateway Resolver Extension in Rust.
+5. Show all files that need to change.
+6. Explain the execution flow from GraphQL → Grafbase → REST APIs.
+7. Keep the REST APIs completely untouched.
+8. Explain each step before writing code instead of making assumptions.
+
+Do not simplify the problem into a single REST endpoint. The objective is true federation across three independent REST services.

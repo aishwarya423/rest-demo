@@ -1,5 +1,13 @@
 [extensions.rest]
 path = "grafbase_extensions/rest/0.5.2"
 
-[subgraphs.countries]
+# Config for the rest extension. The extension looks up config.subgraphs.<name>
+# and exposes that object to @restEndpoint header templates as `{{ config.* }}`.
+# Keys are read from the environment so no secrets live in the repo.
+[extensions.rest.config.subgraphs.insurance]
+accountsApiKey = "{{ env.ACCOUNTS_API_KEY }}"
+policiesApiKey = "{{ env.POLICIES_API_KEY }}"
+fundsApiKey = "{{ env.FUNDS_API_KEY }}"
+
+[subgraphs.insurance]
 schema_path = "schema.graphql"

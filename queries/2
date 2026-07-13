@@ -1,0 +1,27 @@
+query InsurancePortfolio {
+  account(id: "acct-1001") {
+    id
+    holderName
+    accountType
+    totalValue
+    policies {
+      policyNumber
+      productName
+      status
+      linkedFunds {
+        name
+        assetClass
+        oneYearReturnPercent
+      }
+    }
+    fundHoldings {
+      allocationPercent
+      currentValue
+      fund {
+        name
+        riskRating
+        sustainabilityLabel
+      }
+    }
+  }
+}

@@ -2,6 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+ARG NPM_STRICT_SSL=false
+RUN npm config set strict-ssl ${NPM_STRICT_SSL}
+
 COPY grafbase.toml .
 COPY schema.graphql .
 COPY grafbase_extensions ./grafbase_extensions
