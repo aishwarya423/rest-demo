@@ -1,0 +1,41 @@
+{
+  "name": "rest-demo",
+  "version": "1.0.0",
+  "description": "This example demonstrates how to use the [REST extension](https://grafbase.com/extensions/rest) to integrate the [REST Countries API](https://restcountries.com/) declaratively with the Grafbase Gateway.",
+  "main": "index.js",
+  "scripts": {
+    "mock-rest:accounts": "cd ./mock-rest-apis/accounts && node server.js",
+    "mock-rest:funds": "cd ./mock-rest-apis/funds && node server.js",
+    "mock-rest:policies": "cd ./mock-rest-apis/policies && node server.js",
+    "mock-rest": "concurrently \"npm:mock-rest:accounts\" \"npm:mock-rest:funds\" \"npm:mock-rest:policies\"",
+    "start": "ACCOUNTS_API_KEY=accounts-local-key POLICIES_API_KEY=policies-local-key FUNDS_API_KEY=funds-local-key grafbase dev --listen-address 127.0.0.1:5050",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:restart": "docker compose down && docker compose up -d",
+    "docker:logs": "docker compose logs -f",
+    "docker:build": "docker compose build",
+    "docker:build:up": "docker compose up --build -d",
+    "dev": "concurrently -k \"npm:mock-rest\" \"npx wait-on http://localhost:3001 http://localhost:3002 http://localhost:3003 && npx grafbase dev --port 5050\"",
+    "dev:clean": "npm run docker:down && npm run docker:up",
+    "graphiql": "cd graphiql-vite && yarn dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aishwarya423/rest-demo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/aishwarya423/rest-demo/issues"
+  },
+  "homepage": "https://github.com/aishwarya423/rest-demo#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "nodemon": "^3.1.14",
+    "nx": "23.1.0",
+    "wait-on": "^9.0.10"
+  },
+  "nx": {}
+}

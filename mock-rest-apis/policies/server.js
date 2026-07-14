@@ -9,7 +9,7 @@ const http = require("http");
 // In Docker each container runs one service, selected by SERVICE_NAME + PORT.
 // Locally (outside Docker) you can still run all three by setting those vars
 // or just letting them default to their respective ports.
-const serviceName = process.env.SERVICE_NAME || "accounts";
+const serviceName = process.env.SERVICE_NAME || "policies";
 const port = 3003;
 // const port = Number(process.env.PORT || 3001);
 const expectedApiKey = process.env.EXPECTED_API_KEY || "";
