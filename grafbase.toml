@@ -11,3 +11,7 @@ fundsApiKey = "{{ env.FUNDS_API_KEY }}"
 
 [subgraphs.insurance]
 schema_path = "schema.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true

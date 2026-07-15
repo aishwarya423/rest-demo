@@ -91,10 +91,17 @@ services:
   #   depends_on:
   #     - grafbase
 
+  # graphiql:
+  #   build:
+  #     context: ./explorer
+  #   ports:
+  #     - "8080:8080"
+  #   # depends_on:
+  #   #   - grafbase
+
   graphiql:
     build:
-      context: ./explorer
+      context: ./graphiql-vite
+      dockerfile: Dockerfile
     ports:
-      - "8080:8080"
-    # depends_on:
-    #   - grafbase
+      - "5173:80"
