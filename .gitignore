@@ -1,7 +1,4 @@
 .grafbase
 node_modules
 
-.nx/cache
-.nx/workspace-data
-.nx/migrate-runs
 .DS_Store
