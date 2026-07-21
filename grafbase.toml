@@ -25,31 +25,35 @@ path = "/graphql"
 introspection = true
 
 # ===========================================================================
-# Entity caching — https://grafbase.com/docs/gateway/configuration/entity-cache
-# Config format is documented-correct (grafbase compose + the gateway both
-# accept it). storage MUST be "redis" to use the [entity_caching.redis] table;
-# it defaults to "memory".
-#
-# ⚠️ VERIFIED LIMITATION (2026-07-21, see Docs/ENTITY_CACHING.md):
-#   This config produces NO Redis traffic in this project as-is:
-#     • `grafbase dev` ignores entity caching entirely (dev-server behaviour).
-#     • The production gateway (grafbase-gateway 0.53.5) also wrote nothing to
-#       Redis — entity caching caches *subgraph fetches*, but the single
-#       `insurance` subgraph is resolved by the REST WASM extension, so there
-#       is no cacheable subgraph fetch here.
-#   The block is kept because it is the correct, ready-to-use format for when
-#   the topology/gateway supports it. It does NOT break the current dev flow
-#   (the config is simply ignored, even when no Redis is running).
+# CACHING — full details & testing guide in Docs/CACHING.md
+# Both blocks below activate only under the PRODUCTION gateway
+# (grafbase-gateway). `grafbase dev` ignores caching, so it is a no-op with the
+# current docker-compose command (which runs `grafbase dev`). Redis host is the
+# `redis` compose service (docker-compose.yml); use redis://localhost:6379 for
+# host-side testing. Use rediss:// (+ a [*.redis.tls] table) for TLS.
 # ===========================================================================
+
+# --- Operation caching — VERIFIED WORKING with Redis (writes cached query
+# plans; see Docs/CACHING.md). Presence of [operation_caching.redis] switches
+# the backend to Redis (no `storage` key, unlike entity caching below).
+[operation_caching]
+enabled = true
+limit = 1000
+
+[operation_caching.redis]
+url = "redis://redis:6379"
+key_prefix = "insurance-opcache"
+
+# --- Entity caching — documented-correct format, but a VERIFIED no-op in THIS
+# graph: entity caching stores *subgraph fetches*, and the single `insurance`
+# subgraph is resolved by the REST WASM extension (no cacheable subgraph fetch),
+# so nothing lands in Redis even under the production gateway. Kept as a ready
+# template; storage MUST be "redis" (defaults to "memory") to use the table.
 [entity_caching]
 enabled = true
 ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-# Docker: `valkey` is the compose service DNS name (see docker-compose.yml).
-# Host-side `grafbase dev`: there is no `valkey` host — run a local
-# redis/valkey and use "redis://localhost:6379", or set storage = "memory".
-# Use rediss:// (+ [entity_caching.redis.tls]) for TLS.
-url = "redis://valkey:6379"
-key_prefix = "insurance-gateway"
+url = "redis://redis:6379"
+key_prefix = "insurance-entitycache"
