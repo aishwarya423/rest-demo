@@ -1,7 +1,7 @@
 # schema-gen — Swagger → GraphQL scaffolder
 
 Generates the Grafbase GraphQL schema from the Swagger contracts in
-`mock-rest-apis/*/openapi.json`. Full documentation: [`Docs/SCHEMA_GENERATION.md`](../Docs/SCHEMA_GENERATION.md).
+`mock-rest-apis/*/openapi.yaml`. Full documentation: [`Docs/SCHEMA_GENERATION.md`](../Docs/SCHEMA_GENERATION.md).
 
 ```bash
 npm run schema:generate       # specs -> generated/ -> schema.generated.graphql

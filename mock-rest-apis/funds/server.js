@@ -65,10 +65,11 @@ const funds = [
   }
 ];
 
-// Swagger/OpenAPI contract lives in the co-located openapi.json file — the
-// single source of truth for this service's model (also consumed by the
-// GraphQL schema generator in schema-gen/).
-const openApiSpec = require("./openapi.json");
+// Swagger contract lives in the co-located openapi.yaml file — the single
+// source of truth for this service's model (also consumed by the GraphQL
+// schema generator in schema-gen/). Served verbatim at /openapi.yaml so the
+// server needs no YAML parser.
+const openApiYaml = require("fs").readFileSync(require("path").join(__dirname, "openapi.yaml"), "utf8");
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
@@ -108,8 +109,12 @@ function makeRouter(serviceName) {
       return;
     }
 
-    if (url.pathname === "/openapi.json") {
-      sendJson(res, 200, openApiSpec);
+    if (url.pathname === "/openapi.yaml") {
+      res.writeHead(200, {
+        "Content-Type": "application/yaml",
+        "Access-Control-Allow-Origin": "*"
+      });
+      res.end(openApiYaml);
       return;
     }
 

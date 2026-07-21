@@ -40,6 +40,7 @@
   },
   "homepage": "https://github.com/aishwarya423/rest-demo#readme",
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.3",
+    "yaml": "^2.9.0"
   }
 }

@@ -1,6 +1,6 @@
 # =============================================================================
 # GENERATED FILE — DO NOT EDIT
-# Source : mock-rest-apis/policies/openapi.json (Policies REST API v1.0.0)
+# Source : mock-rest-apis/policies/openapi.yaml (Policies REST API v1.0.0)
 # Emitted: schema-gen/generate.mjs  —  regenerate with: npm run schema:generate
 # =============================================================================
 

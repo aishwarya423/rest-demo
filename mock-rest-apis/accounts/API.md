@@ -2,9 +2,9 @@
 
 Base URL (local): `http://localhost:3001`
 
-Served by [`server.js`](./server.js). The published `/openapi.json` only lists
-endpoint summaries, so this file documents the **actual response keys** returned
-by each endpoint.
+Served by [`server.js`](./server.js). The full Swagger contract (with response
+schemas) lives in [`openapi.yaml`](./openapi.yaml) and is served verbatim at
+`/openapi.yaml`; this file is the human-readable summary of the response keys.
 
 ## Endpoints
 
@@ -14,11 +14,11 @@ by each endpoint.
 | GET    | `/accounts/{id}`                    | Get a single account by id      | `Account`        |
 | GET    | `/customers/{customerId}/accounts`  | List accounts for one customer  | `Account[]`      |
 | GET    | `/health`                           | Health check                    | `{ service, ok }`|
-| GET    | `/openapi.json`                     | OpenAPI summary (no schemas)    | OpenAPI document |
+| GET    | `/openapi.yaml`                     | Swagger contract (YAML)         | OpenAPI document |
 
 ### Auth
 If the `EXPECTED_API_KEY` env var is set, every endpoint except `/health` and
-`/openapi.json` requires the header `X-Api-Key: <key>`. Otherwise auth is open.
+`/openapi.yaml` requires the header `X-Api-Key: <key>`. Otherwise auth is open.
 
 ### Errors
 | Status | Body                                        | When                        |

@@ -15,9 +15,9 @@ contracts owned by the three mock REST services.
 ## 1. The big picture
 
 ```
-mock-rest-apis/accounts/openapi.json ─┐   (Swagger = source of truth,
-mock-rest-apis/funds/openapi.json    ─┤    co-located with each service,
-mock-rest-apis/policies/openapi.json ─┘    also served at /openapi.json)
+mock-rest-apis/accounts/openapi.yaml ─┐   (Swagger = source of truth,
+mock-rest-apis/funds/openapi.yaml    ─┤    co-located with each service,
+mock-rest-apis/policies/openapi.yaml ─┘    also served at /openapi.yaml)
                  │
                  ▼  npm run schema:generate
         schema-gen/generate.mjs  ←── schema-gen/config.json (excludes, directive injection)
@@ -51,7 +51,7 @@ service, or which fields should be hidden (`@inaccessible`). So:
 
 | Layer | Owner | Contents |
 |---|---|---|
-| `mock-rest-apis/*/openapi.json` | service teams | models: fields, types, enums, required/nullable |
+| `mock-rest-apis/*/openapi.yaml` | service teams | models: fields, types, enums, required/nullable |
 | `schema-gen/generated/` | the generator | GraphQL mirror of those models — never hand-edited |
 | `schema-gen/config.json` | you | which schemas to skip, which Grafbase directives to inject onto generated fields |
 | `schema-gen/manual/` | you | endpoints, `@rest` wiring + jq selections, cross-service joins |
@@ -114,20 +114,21 @@ npm run schema:promote
   `schema-gen/validate/gateway.log`. Root `grafbase.toml`/`schema.graphql`
   are never touched.
 
-### Verified result (2026-07-20)
+### Verified result (2026-07-21, from the Swagger YAML specs)
 
 Both checks pass. The e2e query returned live joined data — e.g. enums
 (`EQUITY`, `IN_FORCE`), the `Date` scalar (`2018-06-01`), a 3-way holding→fund
-fan-out and a policy→linkedFunds fan-out — proving the generated types compose
-and resolve through the REST extension.
+fan-out and a policy→linkedFunds fan-out — proving the types generated from the
+YAML specs compose and resolve through the REST extension. `schema.graphql` was
+then promoted from this generated output.
 
 ## 5. The regeneration workflow (day-2 story)
 
 Say the funds service adds a `launchDate` field:
 
-1. Service team edits `mock-rest-apis/funds/openapi.json` — adds the property
+1. Service team edits `mock-rest-apis/funds/openapi.yaml` — adds the property
    (+ `required` if applicable). The running service picks it up at
-   `/openapi.json` automatically (server.js serves the same file).
+   `/openapi.yaml` automatically (server.js serves the same file).
 2. `npm run schema:generate` — `Fund` gains `launchDate: Date!`; nothing else
    changes; `manual/` untouched.
 3. **The one manual coupling:** if the field is non-null, add `launchDate` to
@@ -137,16 +138,16 @@ Say the funds service adds a `launchDate` field:
 4. `npm run schema:validate:e2e` → `npm run schema:promote`.
 
 New service? Add one line to `config.json → services`, author its
-`openapi.json`, add its `@restEndpoint` + Query fields in `manual/`.
+`openapi.yaml`, add its `@restEndpoint` + Query fields in `manual/`.
 
 ## 6. File-by-file reference
 
 | File | Generated? | Purpose |
 |---|---|---|
-| `mock-rest-apis/*/openapi.json` | hand-written | Swagger contract per service (source of truth) |
-| `mock-rest-apis/*/server.js` | hand-written | serves the co-located spec at `/openapi.json` |
+| `mock-rest-apis/*/openapi.yaml` | hand-written | Swagger contract per service (source of truth) |
+| `mock-rest-apis/*/server.js` | hand-written | serves the co-located spec at `/openapi.yaml` |
 | `schema-gen/config.json` | hand-written | services list, excluded schemas, directive injection, enum escape hatch |
-| `schema-gen/generate.mjs` | hand-written (the tool) | zero-dependency scaffolder + composer |
+| `schema-gen/generate.mjs` | hand-written (the tool) | Swagger-YAML scaffolder + composer (uses the `yaml` lib) |
 | `schema-gen/generated/*` | **generated** | GraphQL types/enums/scalars — do not edit |
 | `schema-gen/manual/header.graphql` | hand-written | `@link` imports + the three `@restEndpoint`s |
 | `schema-gen/manual/federation.graphql` | hand-written | `Query` fields, `@rest` + jq selections, `extend type` joins |
@@ -185,6 +186,11 @@ The generated schema is a **superset** with stronger typing:
   spec change without regeneration can drift. CI should run
   `npm run schema:generate && git diff --exit-code schema-gen/` to enforce
   freshness, then `npm run schema:validate` to enforce composability.
+- **Format:** specs are Swagger **YAML** (`openapi.yaml`), the required format.
+  The generator parses them with the `yaml` package and also accepts `.json`
+  (extension-based, see `loadSpec()` in `generate.mjs`) — so a service could
+  supply JSON without any code change. The mock servers serve the raw YAML
+  verbatim at `/openapi.yaml` (no parser needed server-side).
 
 ## 9. CI/CD sketch
 
@@ -196,5 +202,6 @@ The generated schema is a **superset** with stronger typing:
 # optionally spin up the mocks and run schema:validate:e2e
 ```
 
-No Java, no Docker, no third-party generator — the whole toolchain is Node
-(already required by this repo) plus the Grafbase CLI (already a dependency).
+No Java, no Docker, no third-party code generator — the whole toolchain is Node
+plus one tiny library, `yaml` (to parse the Swagger specs; already in the tree),
+and the Grafbase CLI (already a dependency).
