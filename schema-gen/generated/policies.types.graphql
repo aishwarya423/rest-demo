@@ -1,0 +1,33 @@
+# =============================================================================
+# GENERATED FILE — DO NOT EDIT
+# Source : mock-rest-apis/policies/openapi.json (Policies REST API v1.0.0)
+# Emitted: schema-gen/generate.mjs  —  regenerate with: npm run schema:generate
+# =============================================================================
+
+type Policy {
+  id: ID!
+  policyNumber: String!
+  accountId: ID!
+  customerId: ID!
+  policyType: PolicyType!
+  productName: String!
+  status: PolicyStatus!
+  startDate: Date!
+  premiumMonthly: Float!
+  """0 when not applicable"""
+  sumAssured: Float!
+  insuredPerson: String!
+  """Ids of funds the policy invests in; empty when none"""
+  fundIds: [ID!]! @inaccessible
+}
+
+enum PolicyStatus {
+  IN_FORCE
+  ACCUMULATING
+}
+
+enum PolicyType {
+  LIFE_INSURANCE
+  PENSION_ANNUITY
+  INVESTMENT_BOND
+}

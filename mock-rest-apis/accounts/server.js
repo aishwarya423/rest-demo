@@ -66,138 +66,10 @@ const accounts = [
   }
 ];
 
-const openApiByService = {
-  accounts: {
-    openapi: "3.0.3",
-    info: { title: "Accounts REST API", version: "1.0.0" },
-    paths: {
-      "/accounts": {
-        get: {
-          summary: "List accounts",
-          responses: {
-            "200": {
-              description: "A list of accounts",
-              content: {
-                "application/json": {
-                  schema: { type: "array", items: { $ref: "#/components/schemas/Account" } }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/accounts/{id}": {
-        get: {
-          summary: "Get account by id",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" }, example: "acct-1001" }
-          ],
-          responses: {
-            "200": {
-              description: "The requested account",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Account" }
-                }
-              }
-            },
-            "404": {
-              description: "Account not found",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/customers/{customerId}/accounts": {
-        get: {
-          summary: "List accounts for a customer",
-          parameters: [
-            { name: "customerId", in: "path", required: true, schema: { type: "string" }, example: "cust-501" }
-          ],
-          responses: {
-            "200": {
-              description: "Accounts belonging to the customer",
-              content: {
-                "application/json": {
-                  schema: { type: "array", items: { $ref: "#/components/schemas/Account" } }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    components: {
-      securitySchemes: {
-        ApiKeyAuth: { type: "apiKey", in: "header", name: "X-Api-Key" }
-      },
-      schemas: {
-        Account: {
-          type: "object",
-          required: [
-            "id",
-            "customerId",
-            "holderName",
-            "accountType",
-            "status",
-            "openedDate",
-            "pensionProvider",
-            "riskProfile",
-            "totalValue",
-            "contributionRate",
-            "fundHoldings"
-          ],
-          properties: {
-            id: { type: "string", example: "acct-1001" },
-            customerId: { type: "string", example: "cust-501" },
-            holderName: { type: "string", example: "Anika Rao" },
-            accountType: { type: "string", enum: ["PENSION", "INVESTMENT_ISA"], example: "PENSION" },
-            status: { type: "string", enum: ["ACTIVE"], example: "ACTIVE" },
-            openedDate: { type: "string", format: "date", example: "2016-04-18" },
-            pensionProvider: {
-              type: "string",
-              nullable: true,
-              description: "null for non-pension accounts",
-              example: "Northstar Retirement"
-            },
-            riskProfile: {
-              type: "string",
-              enum: ["CAUTIOUS", "BALANCED", "GROWTH"],
-              example: "BALANCED"
-            },
-            totalValue: { type: "number", example: 186420.75 },
-            contributionRate: { type: "number", description: "Percent; 0 when not contributing", example: 8.5 },
-            fundHoldings: {
-              type: "array",
-              items: { $ref: "#/components/schemas/FundHolding" }
-            }
-          }
-        },
-        FundHolding: {
-          type: "object",
-          required: ["fundId", "allocationPercent", "units", "currentValue"],
-          properties: {
-            fundId: { type: "string", example: "fund-global-equity" },
-            allocationPercent: { type: "number", example: 45 },
-            units: { type: "number", example: 1230.52 },
-            currentValue: { type: "number", example: 83900.12 }
-          }
-        },
-        Error: {
-          type: "object",
-          required: ["error"],
-          properties: {
-            error: { type: "string", example: "Not found" }
-          }
-        }
-      }
-    }
-  }
-};
+// Swagger/OpenAPI contract lives in the co-located openapi.json file — the
+// single source of truth for this service's model (also consumed by the
+// GraphQL schema generator in schema-gen/).
+const openApiSpec = require("./openapi.json");
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
@@ -238,7 +110,7 @@ function makeRouter(serviceName) {
     }
 
     if (url.pathname === "/openapi.json") {
-      sendJson(res, 200, openApiByService[serviceName]);
+      sendJson(res, 200, openApiSpec);
       return;
     }
 

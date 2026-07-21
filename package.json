@@ -20,7 +20,12 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:build": "docker compose build",
-    "docker:restart": "docker compose down && docker compose up -d"
+    "docker:restart": "docker compose down && docker compose up -d",
+    "SCHEMA-GEN":"-------------SCHEMA-GEN---------------",
+    "schema:generate": "node schema-gen/generate.mjs",
+    "schema:validate": "bash schema-gen/validate/validate.sh",
+    "schema:validate:e2e": "bash schema-gen/validate/validate.sh --e2e",
+    "schema:promote": "cp schema-gen/schema.generated.graphql schema.graphql && echo 'Promoted schema-gen/schema.generated.graphql -> schema.graphql'"
   },
   "repository": {
     "type": "git",

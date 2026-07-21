@@ -1,0 +1,118 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Funds REST API",
+    "version": "1.0.0",
+    "description": "Mock funds service. Source of truth for the Fund model consumed by the GraphQL schema generator (schema-gen/generate.mjs)."
+  },
+  "paths": {
+    "/funds": {
+      "get": {
+        "summary": "List funds",
+        "responses": {
+          "200": {
+            "description": "A list of funds",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Fund" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{id}": {
+      "get": {
+        "summary": "Get fund by id",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "example": "fund-global-equity" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested fund",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Fund" }
+              }
+            }
+          },
+          "404": {
+            "description": "Fund not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{accountId}/funds": {
+      "get": {
+        "summary": "List funds held by an account",
+        "parameters": [
+          { "name": "accountId", "in": "path", "required": true, "schema": { "type": "string" }, "example": "acct-1001" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Funds held by the account",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Fund" } }
+              }
+            }
+          },
+          "404": {
+            "description": "Account not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-Api-Key" }
+    },
+    "schemas": {
+      "Fund": {
+        "type": "object",
+        "required": [
+          "id",
+          "isin",
+          "name",
+          "assetClass",
+          "currency",
+          "riskRating",
+          "ongoingChargePercent",
+          "oneYearReturnPercent",
+          "threeYearReturnPercent",
+          "sustainabilityLabel"
+        ],
+        "properties": {
+          "id": { "type": "string", "example": "fund-global-equity" },
+          "isin": { "type": "string", "description": "International Securities Identification Number", "example": "GB00GLBEQ001" },
+          "name": { "type": "string", "example": "Global Equity Index" },
+          "assetClass": { "type": "string", "enum": ["EQUITY", "FIXED_INCOME", "CASH"], "example": "EQUITY" },
+          "currency": { "type": "string", "description": "ISO 4217 currency code", "example": "GBP" },
+          "riskRating": { "type": "integer", "minimum": 1, "maximum": 7, "description": "1 (lowest) to 7 (highest)", "example": 5 },
+          "ongoingChargePercent": { "type": "number", "example": 0.18 },
+          "oneYearReturnPercent": { "type": "number", "example": 12.4 },
+          "threeYearReturnPercent": { "type": "number", "example": 28.6 },
+          "sustainabilityLabel": { "type": "string", "enum": ["STANDARD", "SUSTAINABLE", "TRANSITION"], "example": "STANDARD" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "example": "Not found" }
+        }
+      }
+    }
+  }
+}

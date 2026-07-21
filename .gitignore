@@ -2,3 +2,7 @@
 node_modules
 
 .DS_Store
+# schema-gen validation artifacts (rebuilt by validate.sh)
+schema-gen/validate/schema.validate.graphql
+schema-gen/validate/composed.federated.graphql
+schema-gen/validate/gateway.log

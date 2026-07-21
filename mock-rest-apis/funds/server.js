@@ -65,17 +65,10 @@ const funds = [
   }
 ];
 
-const openApiByService = {
-  funds: {
-    openapi: "3.0.3",
-    info: { title: "Funds REST API", version: "1.0.0" },
-    paths: {
-      "/funds": { get: { summary: "List funds" } },
-      "/funds/{id}": { get: { summary: "Get fund by id" } },
-      "/accounts/{accountId}/funds": { get: { summary: "List funds held by an account" } }
-    }
-  }
-};
+// Swagger/OpenAPI contract lives in the co-located openapi.json file — the
+// single source of truth for this service's model (also consumed by the
+// GraphQL schema generator in schema-gen/).
+const openApiSpec = require("./openapi.json");
 
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
@@ -116,7 +109,7 @@ function makeRouter(serviceName) {
     }
 
     if (url.pathname === "/openapi.json") {
-      sendJson(res, 200, openApiByService[serviceName]);
+      sendJson(res, 200, openApiSpec);
       return;
     }
 

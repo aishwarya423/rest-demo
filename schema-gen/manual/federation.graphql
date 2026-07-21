@@ -1,0 +1,118 @@
+# =============================================================================
+# MANUAL FILE — hand-written, never touched by the generator.
+#
+# This is the federation overlay: everything Swagger CANNOT express —
+# which REST call backs each field (@rest + jq selection), entity lookups
+# (@lookup), cross-service joins (@derive/@is/@require) and visibility
+# (@inaccessible, injected onto generated fields via schema-gen/config.json).
+#
+# NOTE the coupling: each @rest `selection` must list every field the
+# generated type declares as non-null. When a spec gains a field, regenerate
+# AND add the field to the selection(s) below.
+# =============================================================================
+
+type Query {
+  # Entry point -> GET /accounts/{id}
+  account(id: ID!): Account
+    @rest(
+      endpoint: "accounts"
+      http: { GET: "/accounts/{{ args.id }}" }
+      selection: """
+      {
+        id,
+        customerId,
+        holderName,
+        accountType,
+        status,
+        openedDate,
+        pensionProvider,
+        riskProfile,
+        totalValue,
+        contributionRate,
+        fundHoldings: [.fundHoldings[] | { fundId, allocationPercent, units, currentValue }]
+      }
+      """
+    )
+
+  # Convenience list -> GET /accounts
+  accounts: [Account!]!
+    @rest(
+      endpoint: "accounts"
+      http: { GET: "/accounts" }
+      selection: """
+      [.[] | {
+        id,
+        customerId,
+        holderName,
+        accountType,
+        status,
+        openedDate,
+        pensionProvider,
+        riskProfile,
+        totalValue,
+        contributionRate,
+        fundHoldings: [.fundHoldings[] | { fundId, allocationPercent, units, currentValue }]
+      }]
+      """
+    )
+
+  # Internal entity lookup used by @derive to fan out funds.
+  # One call per id -> GET /funds/{id}. Hidden from clients via @inaccessible.
+  fund(id: ID!): Fund
+    @inaccessible
+    @lookup
+    @rest(
+      endpoint: "funds"
+      http: { GET: "/funds/{{ args.id }}" }
+      selection: """
+      {
+        id,
+        isin,
+        name,
+        assetClass,
+        currency,
+        riskRating,
+        ongoingChargePercent,
+        oneYearReturnPercent,
+        threeYearReturnPercent,
+        sustainabilityLabel
+      }
+      """
+    )
+}
+
+extend type Account {
+  # Parent account.id is injected as `accountId` via @require (hidden from the
+  # client) -> GET /accounts/{accountId}/policies on the policies service.
+  policies(accountId: ID! @require(field: "id")): [Policy!]!
+    @rest(
+      endpoint: "policies"
+      http: { GET: "/accounts/{{ args.accountId }}/policies" }
+      selection: """
+      [.[] | {
+        id,
+        policyNumber,
+        accountId,
+        customerId,
+        policyType,
+        productName,
+        status,
+        startDate,
+        premiumMonthly,
+        sumAssured,
+        insuredPerson,
+        fundIds
+      }]
+      """
+    )
+}
+
+extend type FundHolding {
+  # Resolve the single holding fund via the Fund @lookup -> GET /funds/{fundId}
+  fund: Fund @derive @is(field: "{ id: fundId }")
+}
+
+extend type Policy {
+  # Fan out one Fund @lookup per id -> GET /funds/{id} for each entry.
+  linkedFunds: [Fund!]! @derive @is(field: "fundIds[{ id: . }]")
+}

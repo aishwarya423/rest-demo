@@ -1,0 +1,20 @@
+# Validation-only gateway config for the GENERATED schema.
+# Mirrors the root grafbase.toml but points at schema.validate.graphql —
+# a copy of schema-gen/schema.generated.graphql with the docker baseURLs
+# rewritten to localhost (produced by validate.sh). The root config and
+# schema.graphql are never touched by validation.
+
+[extensions.rest]
+path = "../../grafbase_extensions/rest/0.5.2"
+
+[extensions.rest.config.subgraphs.insurance]
+accountsApiKey = "{{ env.ACCOUNTS_API_KEY }}"
+policiesApiKey = "{{ env.POLICIES_API_KEY }}"
+fundsApiKey = "{{ env.FUNDS_API_KEY }}"
+
+[subgraphs.insurance]
+schema_path = "schema.validate.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true

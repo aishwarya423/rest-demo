@@ -1,0 +1,8 @@
+# =============================================================================
+# GENERATED FILE — DO NOT EDIT
+# Custom scalars shared by all generated service types.
+# Emitted: schema-gen/generate.mjs  —  regenerate with: npm run schema:generate
+# =============================================================================
+
+"""ISO-8601 date string, e.g. \"2016-04-18\" (passed through from REST)."""
+scalar Date

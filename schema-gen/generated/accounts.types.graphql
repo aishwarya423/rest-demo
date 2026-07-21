@@ -1,0 +1,43 @@
+# =============================================================================
+# GENERATED FILE — DO NOT EDIT
+# Source : mock-rest-apis/accounts/openapi.json (Accounts REST API v1.0.0)
+# Emitted: schema-gen/generate.mjs  —  regenerate with: npm run schema:generate
+# =============================================================================
+
+type Account {
+  id: ID!
+  customerId: ID!
+  holderName: String!
+  accountType: AccountType!
+  status: AccountStatus!
+  openedDate: Date!
+  """null for non-pension accounts"""
+  pensionProvider: String
+  riskProfile: RiskProfile!
+  totalValue: Float!
+  """Percent; 0 when not contributing"""
+  contributionRate: Float!
+  fundHoldings: [FundHolding!]!
+}
+
+type FundHolding {
+  fundId: ID! @inaccessible
+  allocationPercent: Float!
+  units: Float!
+  currentValue: Float!
+}
+
+enum AccountType {
+  PENSION
+  INVESTMENT_ISA
+}
+
+enum AccountStatus {
+  ACTIVE
+}
+
+enum RiskProfile {
+  CAUTIOUS
+  BALANCED
+  GROWTH
+}
