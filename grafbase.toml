@@ -12,6 +12,44 @@ fundsApiKey = "{{ env.FUNDS_API_KEY }}"
 [subgraphs.insurance]
 schema_path = "schema.graphql"
 
+# Per-subgraph entity-caching override. This project has exactly ONE subgraph,
+# `insurance` (accounts/funds/policies are REST endpoints inside it, not
+# separate subgraphs), so this is the only valid per-subgraph target. Values
+# default to the global [entity_caching] settings below when omitted.
+[subgraphs.insurance.entity_caching]
+enabled = true
+ttl = "120s"
+
 [graph]
 path = "/graphql"
 introspection = true
+
+# ===========================================================================
+# Entity caching — https://grafbase.com/docs/gateway/configuration/entity-cache
+# Config format is documented-correct (grafbase compose + the gateway both
+# accept it). storage MUST be "redis" to use the [entity_caching.redis] table;
+# it defaults to "memory".
+#
+# ⚠️ VERIFIED LIMITATION (2026-07-21, see Docs/ENTITY_CACHING.md):
+#   This config produces NO Redis traffic in this project as-is:
+#     • `grafbase dev` ignores entity caching entirely (dev-server behaviour).
+#     • The production gateway (grafbase-gateway 0.53.5) also wrote nothing to
+#       Redis — entity caching caches *subgraph fetches*, but the single
+#       `insurance` subgraph is resolved by the REST WASM extension, so there
+#       is no cacheable subgraph fetch here.
+#   The block is kept because it is the correct, ready-to-use format for when
+#   the topology/gateway supports it. It does NOT break the current dev flow
+#   (the config is simply ignored, even when no Redis is running).
+# ===========================================================================
+[entity_caching]
+enabled = true
+ttl = "60s"
+storage = "redis"
+
+[entity_caching.redis]
+# Docker: `valkey` is the compose service DNS name (see docker-compose.yml).
+# Host-side `grafbase dev`: there is no `valkey` host — run a local
+# redis/valkey and use "redis://localhost:6379", or set storage = "memory".
+# Use rediss:// (+ [entity_caching.redis.tls]) for TLS.
+url = "redis://valkey:6379"
+key_prefix = "insurance-gateway"

@@ -40,18 +40,20 @@ services:
     ports:
       - "3004:3004"
 
-  # valkey:
-  #   image: valkey/valkey:8-alpine
-  #   restart: unless-stopped
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - valkey-data:/data
-  #   healthcheck:
-  #     test: ["CMD", "valkey-cli", "ping"]
-  #     interval: 5s
-  #     timeout: 3s
-  #     retries: 5
+  # Redis-compatible cache backing the gateway's entity_caching
+  # (grafbase.toml -> [entity_caching.redis] url = redis://valkey:6379).
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   grafbase:
     build:
@@ -62,9 +64,14 @@ services:
     ports:
       - "5050:5050"
     depends_on:
-      - accounts-rest
-      - policies-rest
-      - funds-rest
+      accounts-rest:
+        condition: service_started
+      policies-rest:
+        condition: service_started
+      funds-rest:
+        condition: service_started
+      valkey:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       COUNTRIES_BASE_URL: http://countries-rest:3004
@@ -105,3 +112,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:80"
+
+volumes:
+  # Persists the valkey/redis entity cache across `docker compose down/up`.
+  valkey-data:
