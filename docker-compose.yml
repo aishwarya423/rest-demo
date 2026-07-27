@@ -105,3 +105,25 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:80"
+
+  # Toolbox container for the schema-gen npm scripts (see schema-gen/DOCKER.md).
+  # Not started by `docker compose up` — run explicitly with:
+  #   docker compose run --rm schema-gen npm run schema:generate
+  schema-gen:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: schema-gen/Dockerfile
+    working_dir: /app
+    volumes:
+      - .:/app
+      - schema-gen-node-modules:/app/node_modules
+    # Host networking so schema:validate:e2e's localhost:3001-3003 checks reach
+    # the mock-rest services published by the other compose services below.
+    # (Docker Desktop: enable "host networking" under Settings > Resources > Network.)
+    network_mode: host
+    environment:
+      ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+      POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    command: ["npm", "run", "schema:generate"]
