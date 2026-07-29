@@ -16,6 +16,10 @@
  * NEVER edit files in generated/ — change the openapi.json specs (model) or
  * the files in manual/ (wiring) and re-run:  npm run schema:generate
  *
+ * config.json "services[].spec" accepts either a local path (relative to
+ * repo root) or an http(s) URL (e.g. a GitHub blob/raw link, auto-rewritten
+ * to raw.githubusercontent.com). Private repos need GITHUB_TOKEN/GH_TOKEN set.
+ *
  * Mapping rules (documented in Docs/SCHEMA_GENERATION.md):
  *  - string -> String, integer -> Int, number -> Float, boolean -> Boolean
  *  - string format:date/date-time -> custom scalar Date
@@ -33,11 +37,37 @@ import { dirname, join, resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
-// Load a Swagger/OpenAPI spec from YAML (source of truth) or JSON (still
-// supported for back-compat) based on file extension.
-function loadSpec(absPath) {
-  const raw = readFileSync(absPath, "utf8");
-  return extname(absPath).toLowerCase() === ".json" ? JSON.parse(raw) : YAML.parse(raw);
+const isUrl = (ref) => /^https?:\/\//i.test(ref);
+
+// GitHub "blob" page URLs serve HTML, not the file — rewrite to the raw host.
+function toRawUrl(url) {
+  const m = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+  if (!m) return url;
+  const [, owner, repo, branch, path] = m;
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
+}
+
+function parseSpec(raw, refForExt) {
+  return extname(refForExt).toLowerCase() === ".json" ? JSON.parse(raw) : YAML.parse(raw);
+}
+
+// Load a Swagger/OpenAPI spec from a local path (YAML, or JSON for back-compat)
+// or from an http(s) URL — e.g. a raw/blob GitHub link. Private repos need a
+// GITHUB_TOKEN or GH_TOKEN env var (sent as a bearer token) since raw.githubusercontent.com
+// otherwise 404s on unauthenticated requests.
+async function loadSpec(specRef) {
+  if (isUrl(specRef)) {
+    const rawUrl = toRawUrl(specRef);
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    const res = await fetch(rawUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+    if (!res.ok) {
+      const hint = res.status === 404 ? " (private repo? set GITHUB_TOKEN/GH_TOKEN)" : "";
+      throw new Error(`Failed to fetch spec from ${rawUrl}: ${res.status} ${res.statusText}${hint}`);
+    }
+    return parseSpec(await res.text(), new URL(rawUrl).pathname);
+  }
+  const absPath = join(ROOT, specRef);
+  return parseSpec(readFileSync(absPath, "utf8"), absPath);
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,14 +84,13 @@ const refName = ($ref) => $ref.split("/").pop();
 // ---------------------------------------------------------------------------
 // Load all specs up front.
 // ---------------------------------------------------------------------------
-const services = config.services.map((svc) => {
-  const specPath = join(ROOT, svc.spec);
-  const spec = loadSpec(specPath);
+const services = await Promise.all(config.services.map(async (svc) => {
+  const spec = await loadSpec(svc.spec);
   if (!spec.components?.schemas) {
     throw new Error(`${svc.spec}: no components.schemas found — the Swagger spec must define its models.`);
   }
   return { ...svc, specPath: svc.spec, spec };
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Pass 1 — collect every enum so names can be resolved deterministically.

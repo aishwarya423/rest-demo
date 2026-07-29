@@ -1,7 +1,7 @@
 {
-  "$comment": "Config for schema-gen/generate.mjs. 'services' lists the Swagger YAML specs to read (paths relative to repo root; .json is also accepted). 'excludeSchemas' are REST-plumbing shapes that must not become GraphQL types. 'directives' injects Grafbase composite-schema directives onto generated types/fields (key: 'Type' or 'Type.field') so the generated layer stays regenerable while still carrying federation metadata. 'enumsAsStrings' downgrades all enums to String if the gateway ever rejects enum coercion.",
+  "$comment": "Config for schema-gen/generate.mjs. 'services' lists the Swagger specs to read — 'spec' is either a path relative to repo root (.json also accepted) or an http(s) URL (e.g. a GitHub blob/raw link; private repos need GITHUB_TOKEN/GH_TOKEN set). 'excludeSchemas' are REST-plumbing shapes that must not become GraphQL types. 'directives' injects Grafbase composite-schema directives onto generated types/fields (key: 'Type' or 'Type.field') so the generated layer stays regenerable while still carrying federation metadata. 'enumsAsStrings' downgrades all enums to String if the gateway ever rejects enum coercion.",
   "services": [
-    { "name": "accounts", "spec": "mock-rest-apis/accounts/openapi.yaml" },
+    { "name": "accounts", "spec": "https://github.com/aishwarya423/rest-demo/blob/feature/schema-generation-from-yaml/mock-rest-apis/accounts/openapi.yaml" },
     { "name": "funds", "spec": "mock-rest-apis/funds/openapi.yaml" },
     { "name": "policies", "spec": "mock-rest-apis/policies/openapi.yaml" }
   ],
