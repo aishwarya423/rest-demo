@@ -39,7 +39,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "redis://redis:6379"          # `redis` = compose service; localhost for host tests
+url = "{{ env.REDIS_URL }}"          # env-driven; see REDIS_URL below
 key_prefix = "insurance-opcache"
 
 # Entity caching — correct format, but a no-op in this REST-extension graph.
@@ -50,9 +50,19 @@ ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-url = "redis://redis:6379"
+url = "{{ env.REDIS_URL }}"          # env-driven; see REDIS_URL below
 key_prefix = "insurance-entitycache"
 ```
+
+The Redis endpoint is **env-driven**: the gateway interpolates `{{ env.* }}` in
+`grafbase.toml` at startup, so the URL comes from the `REDIS_URL` environment
+variable rather than a hardcoded value. Set it per environment:
+
+- **docker-compose:** `REDIS_URL=redis://redis:6379` (already set on the
+  `grafbase` service in `docker-compose.yml`, defaulting to the `redis` compose
+  service name).
+- **host-side testing:** `export REDIS_URL=redis://localhost:6379` before
+  running the gateway.
 
 `docker-compose.yml` runs a `redis:7-alpine` service (health-checked, with a
 `redis-data` volume) that the gateway `depends_on`.
@@ -90,13 +100,16 @@ sed -e 's|http://accounts-rest:3001|http://localhost:3001|' \
     -e 's|http://funds-rest:3002|http://localhost:3002|' \
     schema.graphql > /tmp/schema.localhost.graphql
 
-# config copy: point Redis + schema_path at localhost / the file above
-sed -e 's|redis://redis:6379|redis://localhost:6379|g' \
-    -e 's|schema_path = "schema.graphql"|schema_path = "/tmp/schema.localhost.graphql"|' \
+# config copy: point schema_path at the file above. The Redis URL is now
+# env-driven ({{ env.REDIS_URL }}), so it needs no rewrite here — just export
+# REDIS_URL for localhost when you run the gateway (step 4).
+sed -e 's|schema_path = "schema.graphql"|schema_path = "/tmp/schema.localhost.graphql"|' \
     grafbase.toml > /tmp/grafbase.local.toml
 
-# compose the federated schema the production gateway consumes
+# compose the federated schema the production gateway consumes.
+# Export REDIS_URL too so {{ env.REDIS_URL }} in the config always resolves.
 export ACCOUNTS_API_KEY=accounts-local-key POLICIES_API_KEY=policies-local-key FUNDS_API_KEY=funds-local-key
+export REDIS_URL=redis://localhost:6379
 npx grafbase compose -c /tmp/grafbase.local.toml > /tmp/federated.graphql
 ```
 
@@ -104,6 +117,7 @@ npx grafbase compose -c /tmp/grafbase.local.toml > /tmp/federated.graphql
 
 ```bash
 curl -fsSL https://grafbase.com/downloads/gateway | sh     # -> ./grafbase-gateway
+export REDIS_URL=redis://localhost:6379                    # env-driven cache endpoint
 ./grafbase-gateway --config /tmp/grafbase.local.toml \
                    --schema /tmp/federated.graphql \
                    --listen-address 127.0.0.1:5097

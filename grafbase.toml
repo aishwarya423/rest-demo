@@ -28,9 +28,15 @@ introspection = true
 # CACHING — full details & testing guide in Docs/CACHING.md
 # Both blocks below activate only under the PRODUCTION gateway
 # (grafbase-gateway). `grafbase dev` ignores caching, so it is a no-op with the
-# current docker-compose command (which runs `grafbase dev`). Redis host is the
-# `redis` compose service (docker-compose.yml); use redis://localhost:6379 for
-# host-side testing. Use rediss:// (+ a [*.redis.tls] table) for TLS.
+# current docker-compose command (which runs `grafbase dev`).
+#
+# The Redis endpoint is env-driven: url = "{{ env.REDIS_URL }}" (Grafbase
+# interpolates {{ env.* }} in grafbase.toml at gateway startup). Set REDIS_URL
+# in the environment the gateway runs in:
+#   - docker-compose: redis://redis:6379   (the `redis` compose service; set on
+#     the `grafbase` service in docker-compose.yml)
+#   - host-side testing: export REDIS_URL=redis://localhost:6379
+# Use a rediss:// URL (+ a [*.redis.tls] table) for TLS.
 # ===========================================================================
 
 # --- Operation caching — VERIFIED WORKING with Redis (writes cached query
@@ -41,7 +47,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "redis://redis:6379"
+url = "{{ env.REDIS_URL }}"          # e.g. redis://redis:6379 (compose) / redis://localhost:6379 (host)
 key_prefix = "insurance-opcache"
 
 # --- Entity caching — documented-correct format, but a VERIFIED no-op in THIS
@@ -55,5 +61,5 @@ ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-url = "redis://redis:6379"
+url = "{{ env.REDIS_URL }}"          # e.g. redis://redis:6379 (compose) / redis://localhost:6379 (host)
 key_prefix = "insurance-entitycache"

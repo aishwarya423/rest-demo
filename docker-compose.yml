@@ -76,6 +76,12 @@ services:
     environment:
       NODE_ENV: production
       COUNTRIES_BASE_URL: http://countries-rest:3004
+      # Redis endpoint for the gateway cache config (grafbase.toml ->
+      # [operation_caching.redis]/[entity_caching.redis] url = "{{ env.REDIS_URL }}").
+      # `redis` is the compose service name; override per environment.
+      # NOTE: the current command runs `grafbase dev`, which ignores caching, so
+      # this only takes effect once the service runs the production gateway.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       # Forwarded to @restEndpoint headers via grafbase.toml -> {{ config.* }}.
       # NOTE: when the gateway runs in-container, switch the @restEndpoint
       # baseURLs in schema.graphql to the docker service names (see comments there).
