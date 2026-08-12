@@ -50,13 +50,15 @@ this is the quick reference.
 
 ### Env-driven Redis endpoint
 
-The Redis URL is **not hardcoded** — the gateway interpolates `{{ env.REDIS_URL }}`
-in `grafbase.toml` at startup. Set `REDIS_URL` per environment:
+The Redis endpoint comes from the `REDIS_URL` env var. **Note:** the gateway
+(0.53.5) does *not* interpolate `{{ env.* }}` in the caching `redis.url` field, so
+`grafbase.toml` holds a concrete default (`redis://redis:6379`) and `REDIS_URL` is
+substituted into it at startup by our tooling:
 
-| Environment | Value |
+| Environment | Mechanism |
 |---|---|
-| docker-compose | `redis://redis:6379` (set on the `grafbase` service; the `redis` compose service name) |
-| host-side testing | `export REDIS_URL=redis://localhost:6379` |
+| docker (`Dockerfile.gateway`) | `docker/gateway-entrypoint.sh` substitutes `$REDIS_URL` (defaults to `redis://redis:6379`) |
+| host-side testing | the `sed` step in `Docs/CACHING.md` rewrites `redis://redis:6379` → `redis://localhost:6379` |
 
 Use a `rediss://` URL (plus a `[*.redis.tls]` table) for TLS.
 
@@ -70,13 +72,23 @@ Use a `rediss://` URL (plus a `[*.redis.tls]` table) for TLS.
   resolved by the REST WASM extension, so there is no gateway→subgraph fetch to
   cache. Why: [`Docs/ENTITY-CACHING-WHY-NOOP.md`](Docs/ENTITY-CACHING-WHY-NOOP.md).
 
-### Verify it (short version)
+### Verify it the Docker way (recommended)
 
-Run the production gateway against the same config (see
-[`Docs/CACHING.md`](Docs/CACHING.md) for the full walkthrough), fire a query
-twice, then watch keys appear in Redis:
+Use the production-gateway compose file — this runs `grafbase-gateway` (not
+`grafbase dev`), so caching actually engages. **Verified end-to-end.**
 
 ```bash
-docker exec redis-test redis-cli --scan --pattern 'insurance-opcache*'
+docker compose -f docker-compose.gateway.yml up --build -d
+# GraphQL: http://localhost:5060/graphql
+
+# fire a query, then watch the operation-plan key appear in Redis
+curl -s localhost:5060/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
+docker compose -f docker-compose.gateway.yml exec redis \
+  redis-cli --scan --pattern 'insurance-opcache*'
 # insurance-opcacheop.blake3.<hash>   <- one key per distinct operation
 ```
+
+Cache **persistence** survives restarts (verified): the key remains after
+`docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway`
+thanks to the `redis-data` volume.

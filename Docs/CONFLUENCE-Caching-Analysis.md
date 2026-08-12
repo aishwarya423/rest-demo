@@ -47,8 +47,9 @@ Concretely, the POC needs to answer:
 |---|---|
 | **Cache container** | `redis:7-alpine` service in [`docker-compose.yml`](../docker-compose.yml) — `restart: unless-stopped`, health-checked, with a `redis-data` volume so keys **persist across `docker compose down/up`**. |
 | **Gateway cache config** | `[operation_caching]` (Redis-backed, **verified**) and `[entity_caching]` (Redis-backed, correct but a no-op here) in [`grafbase.toml`](../grafbase.toml). |
-| **Env-driven endpoint** | Redis URL is `{{ env.REDIS_URL }}` — interpolated at gateway startup from the `REDIS_URL` env var (set on the compose `grafbase` service, overridable per environment). |
-| **Verification** | End-to-end steps that show `insurance-opcache*` keys filling Redis under the production gateway, plus restart-reuse. See [`CACHING.md`](./CACHING.md). |
+| **Docker gateway (verified)** | [`docker-compose.gateway.yml`](../docker-compose.gateway.yml) + [`Dockerfile.gateway`](../Dockerfile.gateway) run the **production `grafbase-gateway`** in Docker so caching actually engages — verified writing `insurance-opcache*` keys and surviving restart. |
+| **Env-driven endpoint** | Redis URL comes from the `REDIS_URL` env var. The gateway does **not** interpolate `{{ env.* }}` in the caching `redis.url`, so the entrypoint substitutes `$REDIS_URL` into a concrete default at startup. |
+| **Verification** | End-to-end steps that show `insurance-opcache*` keys filling Redis under the production gateway, plus restart persistence. See [`CACHING.md`](./CACHING.md). |
 | **Documentation** | [`CACHING.md`](./CACHING.md), [`DEV-VS-GATEWAY-CACHING.md`](./DEV-VS-GATEWAY-CACHING.md), [`ENTITY-CACHING-WHY-NOOP.md`](./ENTITY-CACHING-WHY-NOOP.md), and a Caching section in [`README.md`](../README.md). |
 
 ### Cache configuration used
@@ -140,10 +141,11 @@ Full reference list: [Technical Details §9](./Caching-Technical-Details.md#9-of
 
 ## Future Scope
 
-- **Run caching in Docker Compose by default (AC2):** switch the `grafbase`
-  service from `grafbase dev` to `grafbase-gateway` (add a `grafbase compose`
-  step for the federated schema + Dockerfile install). Today caching is
-  validated by running the production gateway on the host.
+- **Make the production gateway the default (optional):** caching in Docker is
+  already delivered via [`docker-compose.gateway.yml`](../docker-compose.gateway.yml)
+  (verified). A remaining nice-to-have is folding it into the *default*
+  `docker-compose.yml` (e.g. via a compose profile) so a single `up` runs the
+  gateway — today it's a separate, explicit compose file by design.
 - **Cache response data / cut REST round-trips:** add a REST-layer Redis proxy
   cache in front of the mock services (the only lever that caches data in this
   topology; also enables a clean TTL demo). *Proposal — not implemented.*

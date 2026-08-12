@@ -30,12 +30,14 @@ introspection = true
 # (grafbase-gateway). `grafbase dev` ignores caching, so it is a no-op with the
 # current docker-compose command (which runs `grafbase dev`).
 #
-# The Redis endpoint is env-driven: url = "{{ env.REDIS_URL }}" (Grafbase
-# interpolates {{ env.* }} in grafbase.toml at gateway startup). Set REDIS_URL
-# in the environment the gateway runs in:
-#   - docker-compose: redis://redis:6379   (the `redis` compose service; set on
-#     the `grafbase` service in docker-compose.yml)
-#   - host-side testing: export REDIS_URL=redis://localhost:6379
+# The Redis endpoint is env-driven, but NOTE: the gateway (0.53.5) does NOT
+# interpolate {{ env.* }} in the caching `redis.url` field (that templating only
+# works for the REST-extension config). So the url below is a concrete default,
+# and the REDIS_URL env var is substituted into it at startup by our tooling:
+#   - docker (Dockerfile.gateway): docker/gateway-entrypoint.sh substitutes
+#     $REDIS_URL (defaults to redis://redis:6379, the `redis` compose service).
+#   - host testing: rewrite redis://redis:6379 -> redis://localhost:6379 with the
+#     sed step in Docs/CACHING.md before running the gateway.
 # Use a rediss:// URL (+ a [*.redis.tls] table) for TLS.
 # ===========================================================================
 
@@ -47,7 +49,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "{{ env.REDIS_URL }}"          # e.g. redis://redis:6379 (compose) / redis://localhost:6379 (host)
+url = "redis://redis:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
 key_prefix = "insurance-opcache"
 
 # --- Entity caching — documented-correct format, but a VERIFIED no-op in THIS
@@ -61,5 +63,5 @@ ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-url = "{{ env.REDIS_URL }}"          # e.g. redis://redis:6379 (compose) / redis://localhost:6379 (host)
+url = "redis://redis:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
 key_prefix = "insurance-entitycache"

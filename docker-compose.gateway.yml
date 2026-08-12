@@ -1,0 +1,92 @@
+# =============================================================================
+# Production-gateway compose — runs `grafbase-gateway` (NOT `grafbase dev`) so
+# Redis caching ACTUALLY ENGAGES. Use this to verify caching the Docker way.
+#
+#   docker compose -f docker-compose.gateway.yml up --build
+#
+#   GraphQL : http://localhost:5060/graphql
+#   Redis   : localhost:6379
+#
+# Standalone: brings up the mock REST services + Redis + the production gateway.
+# Run this INSTEAD of the default docker-compose.yml (they share ports 3001-3003
+# and 6379), not alongside it.
+#
+# Verify caching once it's up:
+#   docker compose -f docker-compose.gateway.yml exec redis redis-cli FLUSHALL
+#   curl -s localhost:5060/graphql -H 'content-type: application/json' \
+#     -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
+#   docker compose -f docker-compose.gateway.yml exec redis \
+#     redis-cli --scan --pattern 'insurance-opcache*'   # -> keys appear
+# =============================================================================
+services:
+
+  accounts-rest:
+    build:
+      context: ./mock-rest-apis/accounts
+    environment:
+      SERVICE_NAME: accounts
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports:
+      - "3001:3001"
+
+  policies-rest:
+    build:
+      context: ./mock-rest-apis/policies
+    environment:
+      SERVICE_NAME: policies
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports:
+      - "3003:3003"
+
+  funds-rest:
+    build:
+      context: ./mock-rest-apis/funds
+    environment:
+      SERVICE_NAME: funds
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports:
+      - "3002:3002"
+
+  # Redis cache backing the gateway (persisted via the redis-data volume, so
+  # cached keys survive `down`/`up` — used to demonstrate the persistence AC).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Production gateway — the whole point of this compose file.
+  grafbase-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "5060:5060"
+    depends_on:
+      accounts-rest:
+        condition: service_started
+      policies-rest:
+        condition: service_started
+      funds-rest:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      # Env-driven Redis endpoint ({{ env.REDIS_URL }} in grafbase.toml).
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # Forwarded to @restEndpoint headers via grafbase.toml -> {{ config.* }}.
+      ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+      POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+
+volumes:
+  # Shares the same named volume as docker-compose.yml (same compose project),
+  # so cached keys persist across restarts.
+  redis-data:

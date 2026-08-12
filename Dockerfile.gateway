@@ -1,0 +1,39 @@
+# =============================================================================
+# Production Grafbase Gateway image.
+#
+# Unlike the default `Dockerfile` (which runs `grafbase dev` and therefore
+# IGNORES caching), this image runs the production `grafbase-gateway` binary so
+# operation/entity caching actually engages against Redis.
+#
+# Pairs with `docker-compose.gateway.yml`. See Docs/CACHING.md.
+#
+# Debian base with the node toolchain (needed for the `grafbase` CLI / compose
+# step). The installer pulls a statically-linked musl gateway binary, which runs
+# fine here; this image is verified working end-to-end (gateway 0.53.5).
+# =============================================================================
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# curl for the gateway installer; CA certs for HTTPS (schema composition + spec links)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# grafbase CLI — provides `grafbase compose`, used by the entrypoint to build the
+# pre-composed federated schema the production gateway consumes.
+RUN npm install -g grafbase
+
+# production gateway binary -> /usr/local/bin/grafbase-gateway
+RUN curl -fsSL https://grafbase.com/downloads/gateway | sh \
+ && mv ./grafbase-gateway /usr/local/bin/grafbase-gateway \
+ && grafbase-gateway --version
+
+# config + schema + the local REST extension (loaded via grafbase.toml path)
+COPY grafbase.toml schema.graphql ./
+COPY grafbase_extensions ./grafbase_extensions
+COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
+RUN chmod +x /usr/local/bin/gateway-entrypoint.sh
+
+EXPOSE 5060
+ENTRYPOINT ["/usr/local/bin/gateway-entrypoint.sh"]

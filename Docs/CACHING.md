@@ -39,7 +39,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "{{ env.REDIS_URL }}"          # env-driven; see REDIS_URL below
+url = "redis://redis:6379"          # concrete default; env-overridable (see below)
 key_prefix = "insurance-opcache"
 
 # Entity caching — correct format, but a no-op in this REST-extension graph.
@@ -50,19 +50,22 @@ ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-url = "{{ env.REDIS_URL }}"          # env-driven; see REDIS_URL below
+url = "redis://redis:6379"          # concrete default; env-overridable (see below)
 key_prefix = "insurance-entitycache"
 ```
 
-The Redis endpoint is **env-driven**: the gateway interpolates `{{ env.* }}` in
-`grafbase.toml` at startup, so the URL comes from the `REDIS_URL` environment
-variable rather than a hardcoded value. Set it per environment:
+**Env-driven endpoint — but not via `{{ env.* }}`.** The gateway (0.53.5) does
+**not** interpolate `{{ env.* }}` in the caching `redis.url` field (that
+templating only works for the REST-extension config). Verified empirically: a
+`{{ env.REDIS_URL }}` value writes **no** keys, while a concrete
+`redis://redis:6379` works. So the URL is a concrete default, and the `REDIS_URL`
+env var is substituted into it at startup by our tooling:
 
-- **docker-compose:** `REDIS_URL=redis://redis:6379` (already set on the
-  `grafbase` service in `docker-compose.yml`, defaulting to the `redis` compose
-  service name).
-- **host-side testing:** `export REDIS_URL=redis://localhost:6379` before
-  running the gateway.
+- **docker (`Dockerfile.gateway`):** `docker/gateway-entrypoint.sh` substitutes
+  `$REDIS_URL` (defaults to `redis://redis:6379`, the `redis` compose service).
+  Set it on the `grafbase-gateway` service in `docker-compose.gateway.yml`.
+- **host testing:** the `sed` step below rewrites `redis://redis:6379` →
+  `redis://localhost:6379` before the gateway runs.
 
 `docker-compose.yml` runs a `redis:7-alpine` service (health-checked, with a
 `redis-data` volume) that the gateway `depends_on`.
@@ -100,16 +103,15 @@ sed -e 's|http://accounts-rest:3001|http://localhost:3001|' \
     -e 's|http://funds-rest:3002|http://localhost:3002|' \
     schema.graphql > /tmp/schema.localhost.graphql
 
-# config copy: point schema_path at the file above. The Redis URL is now
-# env-driven ({{ env.REDIS_URL }}), so it needs no rewrite here — just export
-# REDIS_URL for localhost when you run the gateway (step 4).
-sed -e 's|schema_path = "schema.graphql"|schema_path = "/tmp/schema.localhost.graphql"|' \
+# config copy: point Redis + schema_path at localhost / the file above.
+# (The gateway does NOT interpolate {{ env.* }} in redis.url, so rewrite the
+#  literal redis://redis:6379 -> localhost here.)
+sed -e 's|redis://redis:6379|redis://localhost:6379|g' \
+    -e 's|schema_path = "schema.graphql"|schema_path = "/tmp/schema.localhost.graphql"|' \
     grafbase.toml > /tmp/grafbase.local.toml
 
-# compose the federated schema the production gateway consumes.
-# Export REDIS_URL too so {{ env.REDIS_URL }} in the config always resolves.
+# compose the federated schema the production gateway consumes
 export ACCOUNTS_API_KEY=accounts-local-key POLICIES_API_KEY=policies-local-key FUNDS_API_KEY=funds-local-key
-export REDIS_URL=redis://localhost:6379
 npx grafbase compose -c /tmp/grafbase.local.toml > /tmp/federated.graphql
 ```
 
@@ -117,7 +119,6 @@ npx grafbase compose -c /tmp/grafbase.local.toml > /tmp/federated.graphql
 
 ```bash
 curl -fsSL https://grafbase.com/downloads/gateway | sh     # -> ./grafbase-gateway
-export REDIS_URL=redis://localhost:6379                    # env-driven cache endpoint
 ./grafbase-gateway --config /tmp/grafbase.local.toml \
                    --schema /tmp/federated.graphql \
                    --listen-address 127.0.0.1:5097
@@ -171,15 +172,39 @@ rm -f ./grafbase-gateway
 
 ---
 
-## Running caching in docker-compose (optional)
+## Running caching in Docker — `docker-compose.gateway.yml` (verified)
 
-The `grafbase` service in `docker-compose.yml` currently runs `grafbase dev`,
-which **ignores caching**. To get caching in docker you'd swap that service to
-the production gateway: build/download `grafbase-gateway`, add a step that runs
-`grafbase compose` to produce the federated schema, and change the command to
-`grafbase-gateway --config grafbase.toml --schema <federated>.graphql`. The
-`redis` service is already in place for it. (Left as a follow-up — the current
-compose is unchanged apart from swapping valkey → redis.)
+The default `docker-compose.yml` runs `grafbase dev`, which **ignores caching**.
+A dedicated compose file runs the **production gateway** so caching engages in
+Docker — no host binary needed:
+
+```bash
+docker compose -f docker-compose.gateway.yml up --build -d
+#   GraphQL : http://localhost:5060/graphql
+#   Redis   : localhost:6379
+
+# fire a query, then watch the operation-plan key appear
+curl -s localhost:5060/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
+docker compose -f docker-compose.gateway.yml exec redis \
+  redis-cli --scan --pattern 'insurance-opcache*'
+# insurance-opcacheop.blake3.<hash>
+
+# persistence: the key survives a restart (redis-data volume)
+docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway
+docker compose -f docker-compose.gateway.yml exec redis redis-cli DBSIZE   # still > 0
+```
+
+How it works (see [`Dockerfile.gateway`](../Dockerfile.gateway) +
+[`docker/gateway-entrypoint.sh`](../docker/gateway-entrypoint.sh)): the image
+installs `grafbase-gateway`; at startup the entrypoint rewrites the REST
+`baseURL`s to the compose service names, substitutes `$REDIS_URL` into the config,
+runs `grafbase compose`, and execs the production gateway. Run it **instead of**
+the default `docker-compose.yml` (they share ports 3001–3003 and 6379).
+
+**Verified end-to-end** (gateway 0.53.5): `insurance-opcache*` keys appear;
+`insurance-entitycache*` stays empty (topology no-op); keys survive restarting
+both `redis` and `grafbase-gateway`.
 
 ## Why entity caching does nothing here (recap)
 

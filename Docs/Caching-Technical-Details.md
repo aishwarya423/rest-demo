@@ -78,7 +78,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "{{ env.REDIS_URL }}"          # env-driven; see below
+url = "redis://redis:6379"          # concrete default; $REDIS_URL substituted at startup (see gotcha below)
 key_prefix = "insurance-opcache"
 
 [entity_caching]
@@ -102,18 +102,23 @@ Notes:
 - Entity caching needs `storage = "redis"` explicitly (defaults to `memory`).
 - Use a `rediss://` URL (+ a `[*.redis.tls]` table) for TLS.
 
-### Env-driven Redis endpoint
+### Env-driven Redis endpoint (important gotcha)
 
-The endpoint is **not hardcoded**. Grafbase interpolates `{{ env.* }}` in
-`grafbase.toml` at gateway startup, so the URL comes from `REDIS_URL`:
+The endpoint comes from the `REDIS_URL` env var — **but not via Grafbase
+templating.** Verified empirically on gateway **0.53.5**: `{{ env.REDIS_URL }}`
+in the caching `redis.url` field writes **no keys** (the gateway does not
+interpolate `{{ env.* }}` there — that only works for the REST-*extension*
+config), whereas a concrete `redis://redis:6379` works. So the config holds a
+concrete default and `REDIS_URL` is substituted into it at startup by our tooling:
 
-| Environment | `REDIS_URL` |
+| Environment | Mechanism |
 |---|---|
-| docker-compose | `redis://redis:6379` (set on the `grafbase` service; `redis` = compose service name) |
-| host-side testing | `export REDIS_URL=redis://localhost:6379` |
+| docker (`Dockerfile.gateway`) | `docker/gateway-entrypoint.sh` substitutes `$REDIS_URL` (default `redis://redis:6379`) into the config before launch |
+| host-side testing | the `sed` in [`CACHING.md`](./CACHING.md) rewrites `redis://redis:6379` → `redis://localhost:6379` |
 
-Reference: [operation caching docs](https://grafbase.com/docs/gateway/configuration/operation-caching),
-[Docker deployment](https://grafbase.com/docs/gateway/deployment/docker).
+> ⚠️ Do **not** put `{{ env.* }}` in the caching `redis.url` — it silently
+> disables Redis caching (no error, no keys). This was hit and fixed during
+> implementation.
 
 ## 5. Verification flow (summary)
 
@@ -137,17 +142,18 @@ instantly. The `redis-data` volume persists keys across `docker compose down/up`
 
 ## 6. Acceptance-criteria gap analysis
 
-Status reflects the repo **after** the env-config + README updates.
+Status reflects the repo **after** the env-config, README, and
+`docker-compose.gateway.yml` updates.
 
 | # | Acceptance criterion | Status | Detail / how to fully close |
 |---|---|---|---|
 | AC1 | Valkey/Redis runs alongside grafbase via docker compose | ✅ Done | `redis:7-alpine`, persistence, health-checked |
-| AC2 | Runtime uses Valkey-backed cache | ⚠️ Partial | Works under `grafbase-gateway`; the compose default runs `grafbase dev` (no caching). Close by switching the compose command to the production gateway (+ a `grafbase compose` step + Dockerfile install). |
+| AC2 | Runtime uses Valkey-backed cache | ✅ Done (Docker) | [`docker-compose.gateway.yml`](../docker-compose.gateway.yml) runs the production `grafbase-gateway` in Docker — **verified** writing `insurance-opcache*` keys. The *default* `docker-compose.yml` still runs `grafbase dev` (no caching) by design. |
 | AC3 | Repeat queries return cached response | ⚠️ Partial | Operation caching reuses the cached **plan** (verified). Response-**data** caching isn't available in this topology. Close with a REST-layer cache (see §7). |
 | AC4 | TTL / tagging demonstrated | ⚠️ Configured only | TTLs set but no expiry demo. A clean TTL demo is easiest against a REST-layer cache (§7). |
-| AC5 | Cache survives runtime restart (where applicable) | ✅ Done | Operation-plan cache + `redis-data` volume; verified reuse after restart |
+| AC5 | Cache survives runtime restart (where applicable) | ✅ Done | Operation-plan cache + `redis-data` volume; **verified** key survives restarting both `redis` and `grafbase-gateway` |
 | AC6 | README updated with cache config | ✅ Done | Caching section added to [`README.md`](../README.md) |
-| — | (in-scope) Endpoint via environment config | ✅ Done | `{{ env.REDIS_URL }}` + `REDIS_URL` in compose |
+| — | (in-scope) Endpoint via environment config | ✅ Done | `REDIS_URL` substituted into the config by the entrypoint (gateway does not interpolate `{{ env.* }}` here — see §4 gotcha) |
 
 ## 7. Recommended caching strategy (for real performance)
 
