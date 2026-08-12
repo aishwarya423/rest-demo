@@ -1,0 +1,32 @@
+meta {
+  name: http://localhost:5050/graphql
+  type: graphql
+  seq: 8
+}
+
+post {
+  url: http://localhost:5097/graphql
+  body: graphql
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  X-Api-Key: accounts-local-key
+}
+
+body:graphql {
+  query{
+    # this is working redis demo
+    account(id: "acct-1001") {
+      holderName
+      totalValue
+    }
+  }
+  
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
