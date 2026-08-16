@@ -1,0 +1,51 @@
+# =============================================================================
+# Entity-caching POC config — TWO virtual (REST-extension) subgraphs that share
+# a `Fund @key` boundary, so the gateway performs a real cross-subgraph entity
+# fetch that entity caching can store in Redis.
+#
+# Run the PRODUCTION gateway against this (grafbase dev ignores caching).
+# Paths are relative to THIS config file's directory (entity-caching-poc/).
+# =============================================================================
+
+[extensions.rest]
+path = "../grafbase_extensions/rest/0.5.2"
+
+# Per-subgraph extension config (header {{ config.* }} templates). Keys read from
+# env so no secrets in the repo.
+[extensions.rest.config.subgraphs.accounts]
+accountsApiKey = "{{ env.ACCOUNTS_API_KEY }}"
+
+# `accounts` is a virtual (REST-extension) subgraph.
+[subgraphs.accounts]
+schema_path = "accounts.graphql"
+
+# `funds` is a REAL GraphQL subgraph over HTTP (funds-graphql-server.js). Because
+# it is reached at a URL, the gateway resolves Fund via a real `_entities` fetch —
+# the hop entity caching stores. schema_path lets compose read the SDL locally.
+[subgraphs.funds]
+url = "http://localhost:3009/graphql"
+schema_path = "funds.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true
+
+# --- Entity caching -> Redis. THIS is what the POC proves. -------------------
+[entity_caching]
+enabled = true
+ttl = "60s"
+storage = "redis"
+
+[entity_caching.redis]
+url = "redis://localhost:6379"
+key_prefix = "poc-entitycache"
+
+# --- Operation caching too, with a DISTINCT prefix, so we can tell the two ----
+# --- apart in Redis (poc-opcache* = plans, poc-entitycache* = entity fetches). -
+[operation_caching]
+enabled = true
+limit = 1000
+
+[operation_caching.redis]
+url = "redis://localhost:6379"
+key_prefix = "poc-opcache"

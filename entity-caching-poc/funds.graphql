@@ -1,0 +1,34 @@
+# =============================================================================
+# Entity-caching POC — "funds" subgraph (REAL GraphQL subgraph over HTTP).
+#
+# Unlike a REST-extension (virtual) subgraph, this is a genuine federation
+# subgraph served by funds-graphql-server.js at a URL. Because it's reached over
+# HTTP, the gateway resolves Fund entities with a real `_entities` fetch — and
+# THAT response is what entity caching stores in Redis (prefix poc-entitycache).
+#
+# Apollo-federation SDL (compose reads this via schema_path; the gateway sends
+# `_entities` queries to the URL in grafbase.poc.toml at runtime).
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+type Fund @key(fields: "id") {
+  id: ID!
+  isin: String!
+  name: String!
+  assetClass: AssetClass!
+  currency: String!
+  riskRating: Int!
+  ongoingChargePercent: Float!
+  oneYearReturnPercent: Float!
+  threeYearReturnPercent: Float!
+  sustainabilityLabel: SustainabilityLabel!
+}
+
+enum AssetClass { EQUITY FIXED_INCOME CASH }
+enum SustainabilityLabel { STANDARD SUSTAINABLE TRANSITION }
+
+type Query {
+  # Direct entry point (handy for testing the subgraph on its own).
+  fund(id: ID!): Fund
+}

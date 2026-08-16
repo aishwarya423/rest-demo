@@ -1,0 +1,84 @@
+# =============================================================================
+# Entity-caching POC — "accounts" subgraph.
+#
+# Owns Account + FundHolding. Each holding carries a Fund reference containing
+# only the KEY (`fund: { id }`), produced directly in the @rest jq selection.
+# The FULL Fund lives in the "funds" HTTP subgraph, so reading any fund.* field
+# forces a standard federation `_entities` fetch across the boundary — the event
+# entity caching stores. (No @derive — a plain entity reference, which is the
+# form entity caching recognizes.)
+#
+# (Self-contained POC — does NOT touch schema-gen or the root schema.graphql.)
+# =============================================================================
+extend schema
+  @link(url: "https://grafbase.com/extensions/rest/0.5.2", import: ["@restEndpoint", "@rest"])
+  @link(
+    url: "https://specs.grafbase.com/composite-schemas/v1"
+    import: ["@key", "@inaccessible"]
+  )
+  @restEndpoint(
+    name: "accounts"
+    baseURL: "http://localhost:3001"
+    headers: [{ name: "X-Api-Key", value: "{{ config.accountsApiKey }}" }]
+  )
+
+scalar Date
+
+type Account {
+  id: ID!
+  customerId: ID!
+  holderName: String!
+  accountType: AccountType!
+  status: AccountStatus!
+  openedDate: Date!
+  pensionProvider: String
+  riskProfile: RiskProfile!
+  totalValue: Float!
+  contributionRate: Float!
+  fundHoldings: [FundHolding!]!
+}
+
+type FundHolding {
+  allocationPercent: Float!
+  units: Float!
+  currentValue: Float!
+  # Plain federation entity reference — only the key is known here.
+  fund: Fund!
+}
+
+# STUB: this subgraph only knows Fund's key. Everything else comes from `funds`.
+type Fund @key(fields: "id") {
+  id: ID!
+}
+
+enum AccountType { PENSION INVESTMENT_ISA }
+enum AccountStatus { ACTIVE }
+enum RiskProfile { CAUTIOUS BALANCED GROWTH }
+
+type Query {
+  account(id: ID!): Account
+    @rest(
+      endpoint: "accounts"
+      http: { GET: "/accounts/{{ args.id }}" }
+      selection: """
+      {
+        id,
+        customerId,
+        holderName,
+        accountType,
+        status,
+        openedDate,
+        pensionProvider,
+        riskProfile,
+        totalValue,
+        contributionRate,
+        fundHoldings: [.fundHoldings[] | {
+          allocationPercent,
+          units,
+          currentValue,
+          fund: { id: .fundId }
+        }]
+      }
+      """
+    )
+}
