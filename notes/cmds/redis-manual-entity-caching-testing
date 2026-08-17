@@ -1,0 +1,33 @@
+ 
+export ACCOUNTS_API_KEY=accounts-local-key POLICIES_API_KEY=policies-local-key FUNDS_API_KEY=funds-local-key
+(cd mock-rest-apis/accounts && node server.js &)
+(cd mock-rest-apis/policies && node server.js &)
+(cd mock-rest-apis/funds && node server.js &)
+node funds-subgraph/server.js &      
+
+sed 's|redis://redis:6379|redis://localhost:6379|g' grafbase.toml > .grafbase.local.toml
+grafbase compose -c .grafbase.local.toml > /tmp/federated.graphql
+
+./grafbase-gateway --config .grafbase.local.toml --schema /tmp/federated.graphql \
+                   --listen-address 127.0.0.1:5100
+
+
+---------
+docker exec redis-cache redis-cli FLUSHALL
+Q='{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
+curl -s localhost:5100/graphql -H 'content-type: application/json' -d "$Q" >/dev/null
+
+docker exec redis-cache redis-cli --scan --pattern 'insurance-entitycache*'   # one key per Fund
+docker exec redis-cache redis-cli TTL "$(docker exec redis-cache redis-cli --scan --pattern 'insurance-entitycache*' | head -1)"
+
+
+-------
+
+# host has redis-cli (port 6379 published):
+scripts/dump-redis-cache.sh
+
+# no host redis-cli — run inside the container instead:
+REDIS_CONTAINER=redis-cache scripts/dump-redis-cache.sh
+
+# only entity-cache keys, custom output file:
+REDIS_CONTAINER=06c3e9179e98  scripts/dump-redis-cache.sh 'insurance-entitycache*' entity-keys.txt
