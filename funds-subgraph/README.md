@@ -27,7 +27,37 @@ account(id) ─ fundHoldings.fund ─┐   policies.linkedFunds ─┐
 cd funds-subgraph && npm install
 ```
 
-## Run the whole thing (entity caching works only under the PRODUCTION gateway)
+## Run & test in Docker (recommended — no host tools needed)
+
+Everything (mocks + this subgraph + Redis + production gateway) runs via one
+compose file. From the repo root:
+
+```bash
+# run the whole stack
+docker compose -f docker-compose.gateway.yml up --build -d
+docker compose -f docker-compose.gateway.yml ps            # wait until healthy
+#   GraphQL: http://localhost:5060/graphql
+
+# clear cache, then query across the subgraph boundary
+docker compose -f docker-compose.gateway.yml exec redis redis-cli FLUSHALL
+curl -s localhost:5060/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
+
+# entity-cache keys appear (one per Fund) + operation-cache key
+docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-entitycache*'
+docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-opcache*'
+
+# dump the whole cache to a file
+REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) scripts/dump-redis-cache.sh
+
+# tear down
+docker compose -f docker-compose.gateway.yml down
+```
+
+**Verified in Docker:** 3 `insurance-entitycache-*` keys (one per Fund), TTL 120s,
+repeat queries served from cache, keys survive a gateway restart.
+
+## Run on the host (alternative — needs the gateway binary + node)
 
 `grafbase dev` ignores caching — use the `grafbase-gateway` binary. From the repo root:
 

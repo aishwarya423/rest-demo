@@ -1,3 +1,15 @@
+# =============================================================================
+# DEFAULT (dev) compose — runs `grafbase dev`, which IGNORES caching.
+#
+# ⚠️  For Redis caching (operation + ENTITY), use the production-gateway compose
+#     instead — it runs the whole stack, including the `funds` subgraph, in Docker:
+#
+#         docker compose -f docker-compose.gateway.yml up --build -d
+#
+#     See docker-compose.gateway.yml (header has the run/test sequence) and
+#     Docs/CACHING.md. This dev file does NOT include the `funds` subgraph, so
+#     Fund resolution / caching is not exercised here.
+# =============================================================================
 services:
 
   accounts-rest:

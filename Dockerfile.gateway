@@ -32,6 +32,8 @@ RUN curl -fsSL https://grafbase.com/downloads/gateway | sh \
 # config + schema + the local REST extension (loaded via grafbase.toml path)
 COPY grafbase.toml schema.graphql ./
 COPY grafbase_extensions ./grafbase_extensions
+# the funds subgraph SDL — `grafbase compose` reads it via schema_path
+COPY funds-subgraph/funds.graphql ./funds-subgraph/funds.graphql
 COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
 RUN chmod +x /usr/local/bin/gateway-entrypoint.sh
 

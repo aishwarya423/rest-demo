@@ -1,22 +1,33 @@
 # =============================================================================
 # Production-gateway compose — runs `grafbase-gateway` (NOT `grafbase dev`) so
-# Redis caching ACTUALLY ENGAGES. Use this to verify caching the Docker way.
+# Redis caching ACTUALLY ENGAGES, including ENTITY caching via the funds subgraph.
+# Everything runs in Docker — no host tools needed.
 #
-#   docker compose -f docker-compose.gateway.yml up --build
+# ─── RUN ──────────────────────────────────────────────────────────────────────
+#   docker compose -f docker-compose.gateway.yml up --build -d
+#   docker compose -f docker-compose.gateway.yml ps          # wait until healthy
+#   GraphQL: http://localhost:5060/graphql
 #
-#   GraphQL : http://localhost:5060/graphql
-#   Redis   : localhost:6379
-#
-# Standalone: brings up the mock REST services + Redis + the production gateway.
-# Run this INSTEAD of the default docker-compose.yml (they share ports 3001-3003
-# and 6379), not alongside it.
-#
-# Verify caching once it's up:
+# ─── TEST REDIS (ENTITY) CACHING ─────────────────────────────────────────────
+#   # 1. clear the cache
 #   docker compose -f docker-compose.gateway.yml exec redis redis-cli FLUSHALL
+#
+#   # 2. run a query that crosses into the funds subgraph (twice)
 #   curl -s localhost:5060/graphql -H 'content-type: application/json' \
-#     -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
+#     -d '{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
+#
+#   # 3. see the ENTITY cache keys (one per Fund) + their TTL
 #   docker compose -f docker-compose.gateway.yml exec redis \
-#     redis-cli --scan --pattern 'insurance-opcache*'   # -> keys appear
+#     redis-cli --scan --pattern 'insurance-entitycache*'
+#   docker compose -f docker-compose.gateway.yml exec redis \
+#     redis-cli --scan --pattern 'insurance-opcache*'          # operation cache too
+#
+#   # 4. dump the whole cache to a file
+#   REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) \
+#     scripts/dump-redis-cache.sh
+#
+# Standalone: run this INSTEAD of the default docker-compose.yml (they share
+# ports 3001-3003/3009/6379), not alongside it.
 # =============================================================================
 services:
 
@@ -47,8 +58,24 @@ services:
     ports:
       - "3002:3002"
 
+  # The `funds` GraphQL federation subgraph (Yoga). This is the REAL subgraph
+  # whose `_entities` responses ENTITY CACHING stores in Redis. It wraps the
+  # funds REST service.
+  funds-subgraph:
+    build:
+      context: ./funds-subgraph
+    environment:
+      FUNDS_SUBGRAPH_PORT: 3009
+      FUNDS_REST_URL: http://funds-rest:3002
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    depends_on:
+      funds-rest:
+        condition: service_started
+    ports:
+      - "3009:3009"
+
   # Redis cache backing the gateway (persisted via the redis-data volume, so
-  # cached keys survive `down`/`up` — used to demonstrate the persistence AC).
+  # cached keys survive `down`/`up`).
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -62,7 +89,8 @@ services:
       timeout: 3s
       retries: 5
 
-  # Production gateway — the whole point of this compose file.
+  # Production gateway — composes the 2-subgraph federation and serves it with
+  # operation + entity caching against Redis.
   grafbase-gateway:
     build:
       context: .
@@ -76,15 +104,16 @@ services:
         condition: service_started
       funds-rest:
         condition: service_started
+      funds-subgraph:
+        condition: service_started
       redis:
         condition: service_healthy
     environment:
-      # Env-driven Redis endpoint ({{ env.REDIS_URL }} in grafbase.toml).
+      # Redis endpoint substituted into grafbase.toml by the entrypoint.
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       # Forwarded to @restEndpoint headers via grafbase.toml -> {{ config.* }}.
       ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
       POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
-      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
 
 volumes:
   # Shares the same named volume as docker-compose.yml (same compose project),

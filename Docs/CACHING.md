@@ -172,48 +172,63 @@ rm -f ./grafbase-gateway
 
 ---
 
-## Running caching in Docker — `docker-compose.gateway.yml` (verified)
+## Running caching in Docker — `docker-compose.gateway.yml` (verified, all-Docker)
 
 The default `docker-compose.yml` runs `grafbase dev`, which **ignores caching**.
-A dedicated compose file runs the **production gateway** so caching engages in
-Docker — no host binary needed:
+A dedicated compose file runs the **production gateway** plus the `funds`
+subgraph so **both operation AND entity caching engage** — no host tools needed:
 
 ```bash
+# 1. run the whole stack (mocks + funds subgraph + redis + production gateway)
 docker compose -f docker-compose.gateway.yml up --build -d
+docker compose -f docker-compose.gateway.yml ps        # wait until healthy
 #   GraphQL : http://localhost:5060/graphql
-#   Redis   : localhost:6379
 
-# fire a query, then watch the operation-plan key appear
+# 2. clear the cache
+docker compose -f docker-compose.gateway.yml exec redis redis-cli FLUSHALL
+
+# 3. query across the subgraph boundary (account -> fund lives in `funds`)
 curl -s localhost:5060/graphql -H 'content-type: application/json' \
-  -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
+  -d '{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
+
+# 4. ENTITY cache keys appear (one per Fund) + operation-cache key
+docker compose -f docker-compose.gateway.yml exec redis \
+  redis-cli --scan --pattern 'insurance-entitycache*'
 docker compose -f docker-compose.gateway.yml exec redis \
   redis-cli --scan --pattern 'insurance-opcache*'
-# insurance-opcacheop.blake3.<hash>
 
-# persistence: the key survives a restart (redis-data volume)
+# 5. dump the whole cache to a file
+REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) \
+  scripts/dump-redis-cache.sh
+
+# persistence: keys survive a restart (redis-data volume)
 docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway
 docker compose -f docker-compose.gateway.yml exec redis redis-cli DBSIZE   # still > 0
 ```
 
-How it works (see [`Dockerfile.gateway`](../Dockerfile.gateway) +
-[`docker/gateway-entrypoint.sh`](../docker/gateway-entrypoint.sh)): the image
-installs `grafbase-gateway`; at startup the entrypoint rewrites the REST
-`baseURL`s to the compose service names, substitutes `$REDIS_URL` into the config,
-runs `grafbase compose`, and execs the production gateway. Run it **instead of**
-the default `docker-compose.yml` (they share ports 3001–3003 and 6379).
+How it works (see [`Dockerfile.gateway`](../Dockerfile.gateway),
+[`docker/gateway-entrypoint.sh`](../docker/gateway-entrypoint.sh),
+[`funds-subgraph/`](../funds-subgraph/)): the `funds-subgraph` service runs the
+real GraphQL subgraph; the gateway image installs `grafbase-gateway`, and at
+startup the entrypoint rewrites the REST `baseURL`s + the funds subgraph URL to
+the compose service names, substitutes `$REDIS_URL`, runs `grafbase compose`, and
+execs the production gateway. Run it **instead of** the default
+`docker-compose.yml` (they share ports 3001–3003 / 3009 / 6379).
 
-**Verified end-to-end** (gateway 0.53.5): `insurance-opcache*` keys appear;
-`insurance-entitycache*` stays empty (topology no-op); keys survive restarting
-both `redis` and `grafbase-gateway`.
+**Verified end-to-end in Docker** (gateway 0.53.5): 3 `insurance-entitycache-*`
+keys (one per Fund) + an `insurance-opcache*` key, entity keys carry the 120s
+TTL, and keys survive restarting `redis` + `grafbase-gateway`.
 
-## Why entity caching does nothing here (recap)
+## Entity caching now works — via the `funds` subgraph
 
 Entity caching stores the responses the gateway fetches from **downstream
-subgraphs** when resolving `@key` entities across subgraph boundaries. This
-project is a **single** virtual subgraph (`insurance`); its fields — including
-the `Fund @key` lookup fanned out by `@derive` — are resolved by the REST WASM
-extension, not by an HTTP subgraph fetch. With no subgraph-fetch response to
-store, nothing is written to Redis, even under the production gateway. Verified:
-`grafbase-gateway` started clean against a **dead** Redis port and served
-normally, i.e. it never even opened a Redis connection for entity caching in
-this topology.
+subgraphs** when resolving `@key` entities across a subgraph boundary. The graph
+used to be a **single** virtual subgraph (`insurance`) with `Fund` resolved
+in-process by the REST extension — so there was no subgraph fetch to cache (the
+original rationale is in [`ENTITY-CACHING-WHY-NOOP.md`](./ENTITY-CACHING-WHY-NOOP.md)).
+
+`Fund` has since been **split into a real GraphQL subgraph** (`funds`, GraphQL
+Yoga — see [`funds-subgraph/README.md`](../funds-subgraph/README.md)). The gateway
+now resolves `Fund` via a real `_entities` fetch, and those responses **are cached
+in Redis** (`insurance-entitycache*`). Note it must be a *spec-compliant*
+federation subgraph — a hand-rolled `_entities` responder is not cached.

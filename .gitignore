@@ -6,3 +6,6 @@ node_modules
 schema-gen/validate/schema.validate.graphql
 schema-gen/validate/composed.federated.graphql
 schema-gen/validate/gateway.log
+
+# Redis cache dumps produced by scripts/dump-redis-cache.sh
+# redis-cache-dump-*.txt
