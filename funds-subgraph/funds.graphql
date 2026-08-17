@@ -1,0 +1,45 @@
+# =============================================================================
+# `funds` subgraph SDL — the FULL Fund entity.
+#
+# This is a REAL GraphQL federation subgraph (served by server.js with GraphQL
+# Yoga + @apollo/subgraph). `grafbase compose` reads this SDL via schema_path;
+# at runtime the gateway sends `_entities` queries to the URL in grafbase.toml,
+# and those responses are what ENTITY CACHING stores in Redis.
+#
+# Keep in sync with the Fund fields the mock Funds REST API returns.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+type Fund @key(fields: "id") {
+  id: ID!
+  """International Securities Identification Number"""
+  isin: String!
+  name: String!
+  assetClass: AssetClass!
+  """ISO 4217 currency code"""
+  currency: String!
+  """1 (lowest) to 7 (highest)"""
+  riskRating: Int!
+  ongoingChargePercent: Float!
+  oneYearReturnPercent: Float!
+  threeYearReturnPercent: Float!
+  sustainabilityLabel: SustainabilityLabel!
+}
+
+enum AssetClass {
+  EQUITY
+  FIXED_INCOME
+  CASH
+}
+
+enum SustainabilityLabel {
+  STANDARD
+  SUSTAINABLE
+  TRANSITION
+}
+
+type Query {
+  # Direct entry point (handy for testing the subgraph on its own).
+  fund(id: ID!): Fund
+}

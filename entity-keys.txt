@@ -1,0 +1,28 @@
+# Redis cache dump
+# time    : Mon Aug 17 23:07:36 IST 2026
+# source  : container=06c3e9179e98
+# pattern : insurance-entitycache*
+# dbsize  : 4
+
+## key counts by prefix
+   3 insurance-entitycache-<hash>
+
+## keys (KEY | TYPE | TTL | VALUE)
+----------------------------------------------------------------------
+KEY : insurance-entitycache-2c295b92553f5d5d54d4f2e3aa165eb83609fb2249b7a85a6bbfc314d5c0d0fb
+TYPE: string   TTL: 111s
+VALUE:
+"{\"name\":\"Green Bond Income\",\"currency\":\"GBP\"}"
+
+----------------------------------------------------------------------
+KEY : insurance-entitycache-4be3c8184751e546cd468e1ea566849b71de7271857535352d0d2cdc2be0c1c9
+TYPE: string   TTL: 111s
+VALUE:
+"{\"name\":\"Cash Plus Reserve\",\"currency\":\"GBP\"}"
+
+----------------------------------------------------------------------
+KEY : insurance-entitycache-a950197fadf860f8d5eaa7c4d39b7d3c5162b72e39819b331e9a3a3de3ad3d73
+TYPE: string   TTL: 111s
+VALUE:
+"{\"name\":\"Global Equity Index\",\"currency\":\"GBP\"}"
+

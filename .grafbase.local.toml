@@ -43,8 +43,8 @@ introspection = true
 # works for the REST-extension config). So the url below is a concrete default,
 # and the REDIS_URL env var is substituted into it at startup by our tooling:
 #   - docker (Dockerfile.gateway): docker/gateway-entrypoint.sh substitutes
-#     $REDIS_URL (defaults to redis://redis:6379, the `redis` compose service).
-#   - host testing: rewrite redis://redis:6379 -> redis://localhost:6379 with the
+#     $REDIS_URL (defaults to redis://localhost:6379, the `redis` compose service).
+#   - host testing: rewrite redis://localhost:6379 -> redis://localhost:6379 with the
 #     sed step in Docs/CACHING.md before running the gateway.
 # Use a rediss:// URL (+ a [*.redis.tls] table) for TLS.
 # ===========================================================================
@@ -57,7 +57,7 @@ enabled = true
 limit = 1000
 
 [operation_caching.redis]
-url = "redis://redis:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
+url = "redis://localhost:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
 key_prefix = "insurance-opcache"
 
 # --- Entity caching — NOW FUNCTIONAL. With the `funds` subgraph split out as a
@@ -71,5 +71,5 @@ ttl = "60s"
 storage = "redis"
 
 [entity_caching.redis]
-url = "redis://redis:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
+url = "redis://localhost:6379"          # env-overridable via REDIS_URL (substituted at startup — see note above)
 key_prefix = "insurance-entitycache"
