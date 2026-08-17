@@ -1,4 +1,7 @@
- 
+ docker compose -f docker-compose.gateway.yml up --build -d
+
+
+
 export ACCOUNTS_API_KEY=accounts-local-key POLICIES_API_KEY=policies-local-key FUNDS_API_KEY=funds-local-key
 (cd mock-rest-apis/accounts && node server.js &)
 (cd mock-rest-apis/policies && node server.js &)

@@ -29,33 +29,88 @@ cd funds-subgraph && npm install
 
 ## Run & test in Docker (recommended — no host tools needed)
 
-Everything (mocks + this subgraph + Redis + production gateway) runs via one
-compose file. From the repo root:
+Everything (mocks + this subgraph + cache + production gateway) runs via one
+compose file. **Fastest path** is the per-backend scripts (see the next section);
+the manual steps for each backend are below.
+
+#### Redis (default)
 
 ```bash
-# run the whole stack
+# 1. run the whole stack
 docker compose -f docker-compose.gateway.yml up --build -d
 docker compose -f docker-compose.gateway.yml ps            # wait until healthy
 #   GraphQL: http://localhost:5060/graphql
 
-# clear cache, then query across the subgraph boundary
+# 2. clear cache, then query across the subgraph boundary
 docker compose -f docker-compose.gateway.yml exec redis redis-cli FLUSHALL
 curl -s localhost:5060/graphql -H 'content-type: application/json' \
   -d '{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
 
-# entity-cache keys appear (one per Fund) + operation-cache key
+# 3. entity-cache keys appear (one per Fund) + operation-cache key
 docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-entitycache*'
 docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-opcache*'
 
-# dump the whole cache to a file
-REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) scripts/dump-redis-cache.sh
+# 4. dump the whole cache to a file (auto-detects the container + CLI)
+scripts/dump-redis-cache.sh
 
-# tear down
-docker compose -f docker-compose.gateway.yml down
+# 5. tear down
+docker compose -f docker-compose.gateway.yml down -v
 ```
 
-**Verified in Docker:** 3 `insurance-entitycache-*` keys (one per Fund), TTL 120s,
-repeat queries served from cache, keys survive a gateway restart.
+#### Valkey (drop-in — same gateway config)
+
+Only two things change vs Redis: the cache **image** (`CACHE_IMAGE`) and the
+**CLI** (`valkey-cli` — the Valkey image ships that, not `redis-cli`). The gateway
+config / `redis://` URL is unchanged.
+
+```bash
+# 1. run the whole stack on Valkey
+CACHE_IMAGE=valkey/valkey:8-alpine CACHE_CLI=valkey-cli \
+  docker compose -f docker-compose.gateway.yml up --build -d
+docker compose -f docker-compose.gateway.yml ps            # wait until healthy
+#   GraphQL: http://localhost:5060/graphql
+
+# 2. clear cache, then query across the subgraph boundary
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli FLUSHALL
+curl -s localhost:5060/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ fundHoldings { fund { id name currency } } } }"}'
+
+# 3. entity-cache keys appear (one per Fund) + operation-cache key
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli --scan --pattern 'insurance-entitycache*'
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli --scan --pattern 'insurance-opcache*'
+
+# 4. dump the whole cache to a file (auto-detects valkey-cli)
+scripts/dump-redis-cache.sh
+
+# 5. tear down
+docker compose -f docker-compose.gateway.yml down -v
+```
+
+**Verified in Docker — both backends:** 3 `insurance-entitycache-*` keys (one per
+Fund), TTL 120s, repeat queries served from cache, keys survive a gateway restart.
+
+### One-command run + test (per backend — writes a report file)
+
+Two self-contained scripts run the whole sequence (start stack → query → verify)
+and **write a report file** with the response, cache keys and TTLs. Each leaves
+the stack running and prints PASS/FAIL:
+
+```bash
+scripts/run-redis-cache-test.sh     # -> redis-cache-test-report.txt   (Redis)
+scripts/run-valkey-cache-test.sh    # -> valkey-cache-test-report.txt  (Valkey)
+```
+
+Tear down when done: `docker compose -f docker-compose.gateway.yml down -v`.
+
+Other helpers:
+
+```bash
+# assert-only test (brings up, checks, tears down); accepts both
+scripts/test-entity-caching.sh both
+
+# inspect the cache — auto-detects the running container + redis-cli/valkey-cli
+scripts/dump-redis-cache.sh
+```
 
 ## Run on the host (alternative — needs the gateway binary + node)
 

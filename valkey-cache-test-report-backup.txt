@@ -1,0 +1,29 @@
+############################################################
+#  VALKEY entity-caching test report
+#  Tue Aug 18 00:21:54 IST 2026
+############################################################
+
+backend image : valkey/valkey:8-alpine
+backend info  : redis_version:7.2.4 server_name:valkey valkey_version:8.1.9
+GraphQL       : http://localhost:5060/graphql
+
+== query ==
+{"query":"{ account(id:\"acct-1001\"){ holderName fundHoldings { fund { id name currency } } } }"}
+
+== response ==
+{"data":{"account":{"holderName":"Anika Rao","fundHoldings":[{"fund":{"id":"fund-global-equity","name":"Global Equity Index","currency":"GBP"}},{"fund":{"id":"fund-green-bond","name":"Green Bond Income","currency":"GBP"}},{"fund":{"id":"fund-cash-plus","name":"Cash Plus Reserve","currency":"GBP"}}]}}}
+
+== entity-cache keys (3) ==
+insurance-entitycache-2c295b92553f5d5d54d4f2e3aa165eb83609fb2249b7a85a6bbfc314d5c0d0fb
+insurance-entitycache-4be3c8184751e546cd468e1ea566849b71de7271857535352d0d2cdc2be0c1c9
+insurance-entitycache-a950197fadf860f8d5eaa7c4d39b7d3c5162b72e39819b331e9a3a3de3ad3d73
+
+== operation-cache keys (1) ==
+insurance-opcacheop.blake3.EydUS4Mj5x6ETNm28oQhhB8NuRJ4BlGtW7DZtYYNWuw
+
+== cache entries (KEY | TYPE | TTL) ==
+  insurance-entitycache-2c295b92553f5d5d54d4f2e3aa165eb83609fb2249b7a85a6bbfc314d5c0d0fb | string | 118s
+  insurance-entitycache-4be3c8184751e546cd468e1ea566849b71de7271857535352d0d2cdc2be0c1c9 | string | 118s
+  insurance-entitycache-a950197fadf860f8d5eaa7c4d39b7d3c5162b72e39819b331e9a3a3de3ad3d73 | string | 118s
+  insurance-opcacheop.blake3.EydUS4Mj5x6ETNm28oQhhB8NuRJ4BlGtW7DZtYYNWuw | string | -1s
+

@@ -22,9 +22,19 @@
 #   docker compose -f docker-compose.gateway.yml exec redis \
 #     redis-cli --scan --pattern 'insurance-opcache*'          # operation cache too
 #
-#   # 4. dump the whole cache to a file
-#   REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) \
-#     scripts/dump-redis-cache.sh
+#   # 4. dump the whole cache to a file (auto-detects the container + CLI)
+#   scripts/dump-redis-cache.sh
+#
+# ─── SAME THING ON VALKEY ────────────────────────────────────────────────────
+#   CACHE_IMAGE=valkey/valkey:8-alpine CACHE_CLI=valkey-cli \
+#     docker compose -f docker-compose.gateway.yml up --build -d
+#   # then use `valkey-cli` for exec commands, e.g.:
+#   docker compose -f docker-compose.gateway.yml exec redis valkey-cli --scan --pattern 'insurance-entitycache*'
+#   # (scripts/dump-redis-cache.sh auto-detects valkey-cli too)
+#
+# ─── OR the one-command scripts ──────────────────────────────────────────────
+#   scripts/run-redis-cache-test.sh     # run + verify + report (Redis)
+#   scripts/run-valkey-cache-test.sh    # run + verify + report (Valkey)
 #
 # Standalone: run this INSTEAD of the default docker-compose.yml (they share
 # ports 3001-3003/3009/6379), not alongside it.
@@ -74,17 +84,23 @@ services:
     ports:
       - "3009:3009"
 
-  # Redis cache backing the gateway (persisted via the redis-data volume, so
-  # cached keys survive `down`/`up`).
+  # Cache backend — Redis by default, or Valkey (a drop-in Redis fork; same RESP
+  # protocol + port, so the gateway config is IDENTICAL). Switch with env vars:
+  #   Redis  (default):  docker compose -f docker-compose.gateway.yml up --build
+  #   Valkey          :  CACHE_IMAGE=valkey/valkey:8-alpine CACHE_CLI=valkey-cli \
+  #                        docker compose -f docker-compose.gateway.yml up --build
+  # Note: the Valkey image ships `valkey-cli` (not `redis-cli`), so the healthcheck
+  # CLI is env-driven too. Service name stays `redis` (just a label); the gateway
+  # reaches it at redis://redis:6379 either way. Persisted via the redis-data volume.
   redis:
-    image: redis:7-alpine
+    image: ${CACHE_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "${CACHE_CLI:-redis-cli}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5

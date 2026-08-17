@@ -197,9 +197,8 @@ docker compose -f docker-compose.gateway.yml exec redis \
 docker compose -f docker-compose.gateway.yml exec redis \
   redis-cli --scan --pattern 'insurance-opcache*'
 
-# 5. dump the whole cache to a file
-REDIS_CONTAINER=$(docker compose -f docker-compose.gateway.yml ps -q redis) \
-  scripts/dump-redis-cache.sh
+# 5. dump the whole cache to a file (auto-detects the container + CLI)
+scripts/dump-redis-cache.sh
 
 # persistence: keys survive a restart (redis-data volume)
 docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway
@@ -218,6 +217,22 @@ execs the production gateway. Run it **instead of** the default
 **Verified end-to-end in Docker** (gateway 0.53.5): 3 `insurance-entitycache-*`
 keys (one per Fund) + an `insurance-opcache*` key, entity keys carry the 120s
 TTL, and keys survive restarting `redis` + `grafbase-gateway`.
+
+### Redis or Valkey (drop-in, env-switchable)
+
+The cache backend is env-driven — Redis by default, or **Valkey** (a drop-in
+Redis fork; the gateway config is identical, `redis://` scheme unchanged):
+
+```bash
+# Valkey instead of Redis (verified — same keys, same TTL)
+CACHE_IMAGE=valkey/valkey:8-alpine CACHE_CLI=valkey-cli \
+  docker compose -f docker-compose.gateway.yml up --build -d
+# inspect with valkey-cli:
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli --scan --pattern 'insurance-entitycache*'
+```
+
+Full comparison, change-points, and `.env` option:
+[`CONFLUENCE-Redis-vs-Valkey.md`](./CONFLUENCE-Redis-vs-Valkey.md).
 
 ## Entity caching now works — via the `funds` subgraph
 
