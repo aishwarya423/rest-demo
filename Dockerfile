@@ -8,6 +8,7 @@ RUN npm config set strict-ssl ${NPM_STRICT_SSL}
 COPY grafbase.toml .
 COPY schema.graphql .
 COPY grafbase_extensions ./grafbase_extensions
+COPY funds-subgraph/funds.graphql ./funds-subgraph/funds.graphql
 
 RUN npm install -g grafbase
 

@@ -19,6 +19,7 @@ const { createYoga } = require("graphql-yoga");
 const { buildSubgraphSchema } = require("@apollo/subgraph");
 
 const PORT = process.env.FUNDS_SUBGRAPH_PORT || 3009;
+// const FUNDS_REST = process.env.FUNDS_REST_URL || "http://host.docker.internal:3002";
 const FUNDS_REST = process.env.FUNDS_REST_URL || "http://localhost:3002";
 const FUNDS_API_KEY = process.env.FUNDS_API_KEY || "";
 

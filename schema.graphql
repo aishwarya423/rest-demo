@@ -22,12 +22,14 @@ extend schema
   @restEndpoint(
     name: "accounts"
     baseURL: "http://localhost:3001"
+    # baseURL: "http://host.docker.internal:3001"
     # baseURL: "http://accounts-rest:3001"
     headers: [{ name: "X-Api-Key", value: "{{ config.accountsApiKey }}" }]
   )
   @restEndpoint(
     name: "policies"
     baseURL: "http://localhost:3003"
+    # baseURL: "http://host.docker.internal:3003"
     # baseURL: "http://policies-rest:3003"
     headers: [{ name: "X-Api-Key", value: "{{ config.policiesApiKey }}" }]
   )
