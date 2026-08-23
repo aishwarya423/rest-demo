@@ -116,6 +116,8 @@ type Fund @key(fields: "id") {
   oneYearReturnPercent: Float!
   threeYearReturnPercent: Float!
   sustainabilityLabel: SustainabilityLabel!
+  """null for funds launched before this field was tracked"""
+  launchDate: Date
 }
 
 enum AssetClass {
@@ -246,7 +248,8 @@ type Query {
         ongoingChargePercent,
         oneYearReturnPercent,
         threeYearReturnPercent,
-        sustainabilityLabel
+        sustainabilityLabel,
+        launchDate
       }
       """
     )

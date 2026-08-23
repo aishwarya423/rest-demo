@@ -25,7 +25,12 @@ type Fund @key(fields: "id") {
   oneYearReturnPercent: Float!
   threeYearReturnPercent: Float!
   sustainabilityLabel: SustainabilityLabel!
+  """null for funds launched before this field was tracked"""
+  launchDate: Date
 }
+
+"""ISO 8601 date, e.g. 2012-03-01"""
+scalar Date
 
 enum AssetClass {
   EQUITY

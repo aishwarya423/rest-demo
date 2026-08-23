@@ -1,0 +1,2 @@
+grafbase-fed-poc:latest	793MB
+ghcr.io/graphql-hive/router:latest	128MB

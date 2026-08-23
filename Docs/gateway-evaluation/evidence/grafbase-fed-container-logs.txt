@@ -1,0 +1,6 @@
+2026-08-21T12:15:24.756909Z  WARN Subgraph accounts has introspection_url, introspection_headers or schema_path set. They're ignored in the federated gateway.
+2026-08-21T12:15:24.756938Z  WARN Subgraph funds has introspection_url, introspection_headers or schema_path set. They're ignored in the federated gateway.
+2026-08-21T12:15:24.756939Z  WARN Subgraph policies has introspection_url, introspection_headers or schema_path set. They're ignored in the federated gateway.
+2026-08-21T12:15:24.756940Z  INFO Grafbase Gateway 0.53.5
+2026-08-21T12:15:24.756941Z  WARN To send telemetry to the Grafbase Platform, provide a valid graph-ref and access token
+2026-08-21T12:15:24.764744Z  INFO GraphQL endpoint exposed at http://0.0.0.0:5072/graphql

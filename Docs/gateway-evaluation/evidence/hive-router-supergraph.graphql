@@ -1,0 +1,181 @@
+schema
+  @link(url: "https://specs.apollo.dev/link/v1.0")
+  @link(url: "https://specs.apollo.dev/join/v0.3", for: EXECUTION)
+{
+  query: Query
+}
+
+directive @join__enumValue(graph: join__Graph!) repeatable on ENUM_VALUE
+
+directive @join__field(graph: join__Graph, requires: join__FieldSet, provides: join__FieldSet, type: String, external: Boolean, override: String, usedOverridden: Boolean) repeatable on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+
+directive @join__graph(name: String!, url: String!) on ENUM_VALUE
+
+directive @join__implements(graph: join__Graph!, interface: String!) repeatable on OBJECT | INTERFACE
+
+directive @join__type(graph: join__Graph!, key: join__FieldSet, extension: Boolean! = false, resolvable: Boolean! = true, isInterfaceObject: Boolean! = false) repeatable on OBJECT | INTERFACE | UNION | ENUM | INPUT_OBJECT | SCALAR
+
+directive @join__unionMember(graph: join__Graph!, member: String!) repeatable on UNION
+
+directive @link(url: String, as: String, for: link__Purpose, import: [link__Import]) repeatable on SCHEMA
+
+type Account
+  @join__type(graph: ACCOUNTS, key: "id")
+  @join__type(graph: POLICIES, key: "id", extension: true)
+{
+  id: ID!
+  customerId: ID! @join__field(graph: ACCOUNTS)
+  holderName: String! @join__field(graph: ACCOUNTS)
+  accountType: AccountType! @join__field(graph: ACCOUNTS)
+  status: AccountStatus! @join__field(graph: ACCOUNTS)
+  openedDate: Date! @join__field(graph: ACCOUNTS)
+  pensionProvider: String @join__field(graph: ACCOUNTS)
+  riskProfile: RiskProfile! @join__field(graph: ACCOUNTS)
+  totalValue: Float! @join__field(graph: ACCOUNTS)
+  contributionRate: Float! @join__field(graph: ACCOUNTS)
+  fundHoldings: [FundHolding!]! @join__field(graph: ACCOUNTS)
+  policies: [Policy!]! @join__field(graph: POLICIES)
+}
+
+enum AccountStatus
+  @join__type(graph: ACCOUNTS)
+{
+  ACTIVE @join__enumValue(graph: ACCOUNTS)
+}
+
+enum AccountType
+  @join__type(graph: ACCOUNTS)
+{
+  PENSION @join__enumValue(graph: ACCOUNTS)
+  INVESTMENT_ISA @join__enumValue(graph: ACCOUNTS)
+}
+
+enum AssetClass
+  @join__type(graph: FUNDS)
+{
+  EQUITY @join__enumValue(graph: FUNDS)
+  FIXED_INCOME @join__enumValue(graph: FUNDS)
+  CASH @join__enumValue(graph: FUNDS)
+}
+
+"""ISO 8601 date, e.g. 2012-03-01"""
+scalar Date
+  @join__type(graph: ACCOUNTS)
+  @join__type(graph: FUNDS)
+  @join__type(graph: POLICIES)
+
+type Fund
+  @join__type(graph: ACCOUNTS, key: "id", resolvable: false)
+  @join__type(graph: FUNDS, key: "id")
+  @join__type(graph: POLICIES, key: "id", resolvable: false)
+{
+  id: ID!
+
+  """International Securities Identification Number"""
+  isin: String! @join__field(graph: FUNDS)
+  name: String! @join__field(graph: FUNDS)
+  assetClass: AssetClass! @join__field(graph: FUNDS)
+
+  """ISO 4217 currency code"""
+  currency: String! @join__field(graph: FUNDS)
+
+  """1 (lowest) to 7 (highest)"""
+  riskRating: Int! @join__field(graph: FUNDS)
+  ongoingChargePercent: Float! @join__field(graph: FUNDS)
+  oneYearReturnPercent: Float! @join__field(graph: FUNDS)
+  threeYearReturnPercent: Float! @join__field(graph: FUNDS)
+  sustainabilityLabel: SustainabilityLabel! @join__field(graph: FUNDS)
+
+  """null for funds launched before this field was tracked"""
+  launchDate: Date @join__field(graph: FUNDS)
+}
+
+type FundHolding
+  @join__type(graph: ACCOUNTS)
+{
+  fundId: ID!
+  allocationPercent: Float!
+  units: Float!
+  currentValue: Float!
+  fund: Fund!
+}
+
+scalar join__FieldSet
+
+enum join__Graph {
+  ACCOUNTS @join__graph(name: "accounts", url: "http://host.docker.internal:3010/graphql")
+  FUNDS @join__graph(name: "funds", url: "http://host.docker.internal:3009/graphql")
+  POLICIES @join__graph(name: "policies", url: "http://host.docker.internal:3011/graphql")
+}
+
+scalar link__Import
+
+enum link__Purpose {
+  """
+  `SECURITY` features provide metadata necessary to securely resolve fields.
+  """
+  SECURITY
+
+  """
+  `EXECUTION` features provide metadata necessary for operation execution.
+  """
+  EXECUTION
+}
+
+type Policy
+  @join__type(graph: POLICIES, key: "id")
+{
+  id: ID!
+  policyNumber: String!
+  accountId: ID!
+  customerId: ID!
+  policyType: PolicyType!
+  productName: String!
+  status: PolicyStatus!
+  startDate: Date!
+  premiumMonthly: Float!
+  sumAssured: Float!
+  insuredPerson: String!
+  linkedFunds: [Fund!]!
+}
+
+enum PolicyStatus
+  @join__type(graph: POLICIES)
+{
+  IN_FORCE @join__enumValue(graph: POLICIES)
+  ACCUMULATING @join__enumValue(graph: POLICIES)
+}
+
+enum PolicyType
+  @join__type(graph: POLICIES)
+{
+  LIFE_INSURANCE @join__enumValue(graph: POLICIES)
+  PENSION_ANNUITY @join__enumValue(graph: POLICIES)
+  INVESTMENT_BOND @join__enumValue(graph: POLICIES)
+}
+
+type Query
+  @join__type(graph: ACCOUNTS)
+  @join__type(graph: FUNDS)
+  @join__type(graph: POLICIES)
+{
+  account(id: ID!): Account @join__field(graph: ACCOUNTS)
+  fund(id: ID!): Fund @join__field(graph: FUNDS)
+  policy(id: ID!): Policy @join__field(graph: POLICIES)
+}
+
+enum RiskProfile
+  @join__type(graph: ACCOUNTS)
+{
+  CAUTIOUS @join__enumValue(graph: ACCOUNTS)
+  BALANCED @join__enumValue(graph: ACCOUNTS)
+  GROWTH @join__enumValue(graph: ACCOUNTS)
+}
+
+enum SustainabilityLabel
+  @join__type(graph: FUNDS)
+{
+  STANDARD @join__enumValue(graph: FUNDS)
+  SUSTAINABLE @join__enumValue(graph: FUNDS)
+  TRANSITION @join__enumValue(graph: FUNDS)
+}

@@ -25,7 +25,8 @@ const funds = [
     ongoingChargePercent: 0.18,
     oneYearReturnPercent: 12.4,
     threeYearReturnPercent: 28.6,
-    sustainabilityLabel: "STANDARD"
+    sustainabilityLabel: "STANDARD",
+    launchDate: "2012-03-01"
   },
   {
     id: "fund-green-bond",
@@ -37,7 +38,8 @@ const funds = [
     ongoingChargePercent: 0.22,
     oneYearReturnPercent: 5.8,
     threeYearReturnPercent: 13.2,
-    sustainabilityLabel: "SUSTAINABLE"
+    sustainabilityLabel: "SUSTAINABLE",
+    launchDate: "2018-06-15"
   },
   {
     id: "fund-cash-plus",

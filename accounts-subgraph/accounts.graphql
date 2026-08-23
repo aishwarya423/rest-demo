@@ -1,0 +1,62 @@
+# =============================================================================
+# `accounts` subgraph SDL — the Account entity (owning subgraph).
+#
+# Real GraphQL federation subgraph (GraphQL Yoga + @apollo/subgraph), a thin
+# facade over the Accounts REST API. FundHolding.fund and Fund are declared as
+# an UNRESOLVABLE stub (`resolvable: false`) — this subgraph only supplies the
+# key; the funds-subgraph is the one that can resolve the rest of Fund's
+# fields via `_entities`. That's what makes this true Federation v2 entity
+# resolution rather than REST aggregation: the query planner stitches the
+# stub reference across a subgraph boundary at runtime.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+scalar Date
+
+type Account @key(fields: "id") {
+  id: ID!
+  customerId: ID!
+  holderName: String!
+  accountType: AccountType!
+  status: AccountStatus!
+  openedDate: Date!
+  pensionProvider: String
+  riskProfile: RiskProfile!
+  totalValue: Float!
+  contributionRate: Float!
+  fundHoldings: [FundHolding!]!
+}
+
+type FundHolding {
+  fundId: ID!
+  allocationPercent: Float!
+  units: Float!
+  currentValue: Float!
+  fund: Fund!
+}
+
+# Unresolvable stub — only the key. Full Fund fields resolve via the `funds`
+# subgraph's `_entities` fetch (see funds-subgraph/funds.graphql).
+type Fund @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+enum AccountType {
+  PENSION
+  INVESTMENT_ISA
+}
+
+enum AccountStatus {
+  ACTIVE
+}
+
+enum RiskProfile {
+  CAUTIOUS
+  BALANCED
+  GROWTH
+}
+
+type Query {
+  account(id: ID!): Account
+}

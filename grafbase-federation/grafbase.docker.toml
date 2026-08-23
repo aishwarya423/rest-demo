@@ -1,0 +1,29 @@
+# =============================================================================
+# TRUE Federation v2 topology for Grafbase — no REST extension, no @derive/
+# @require. Three real GraphQL subgraphs (accounts-subgraph, policies-subgraph,
+# funds-subgraph), composed the same way Hive Router's supergraph is composed
+# (see ../hive-router/compose.mjs) — the point is an apples-to-apples
+# comparison of Grafbase Gateway vs Hive Router as pure Federation v2
+# executors, isolated from the REST-extension question entirely (that's
+# evaluated separately — see ../REST_FEDERATION.md for the REST-aggregation
+# topology this repo built first).
+#
+# Run: npx grafbase dev --listen-address 127.0.0.1:5070 -c grafbase-federation/grafbase.toml
+# (from repo root, with accounts/policies/funds-subgraph + mock REST APIs running)
+# =============================================================================
+
+[subgraphs.accounts]
+url = "http://host.docker.internal:3010/graphql"
+schema_path = "accounts-subgraph/accounts.graphql"
+
+[subgraphs.policies]
+url = "http://host.docker.internal:3011/graphql"
+schema_path = "policies-subgraph/policies.graphql"
+
+[subgraphs.funds]
+url = "http://host.docker.internal:3009/graphql"
+schema_path = "funds-subgraph/funds.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true

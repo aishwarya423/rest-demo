@@ -1,5 +1,9 @@
 # SPIKE: GraphQL Gateway Evaluation — Grafbase vs Hive Router
 
+> **Executed 2026-08-21.** Results, evidence, and recommendation:
+> [`CONFLUENCE-Outcome.md`](./CONFLUENCE-Outcome.md) (full supporting docs
+> alongside this file).
+
 Execution plan. Owner fills in Jira project key, sprint dates, and names before
 import. Grounded in the current repo state as of 2026-08-21 (branch
 `feature/entity-caching-testing`) — see cross-references to existing docs

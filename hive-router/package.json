@@ -1,0 +1,15 @@
+{
+  "name": "hive-router-compose",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Composes the accounts/policies/funds subgraphs into a Federation v2 supergraph.graphql for Hive Router. Hive Router itself has no composition step (see Docs/gateway-evaluation/01-research-findings.md) — this is the external composer the spike identified as required.",
+  "type": "module",
+  "scripts": {
+    "compose": "node compose.mjs"
+  },
+  "dependencies": {
+    "@apollo/composition": "^2.9.3",
+    "@apollo/federation-internals": "^2.9.3",
+    "graphql": "^16.9.0"
+  }
+}

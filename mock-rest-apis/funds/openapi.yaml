@@ -126,6 +126,12 @@ components:
           type: string
           enum: [STANDARD, SUSTAINABLE, TRANSITION]
           example: STANDARD
+        launchDate:
+          type: string
+          format: date
+          nullable: true
+          description: null for funds launched before this field was tracked
+          example: "2012-03-01"
     Error:
       type: object
       required: [error]

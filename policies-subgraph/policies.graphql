@@ -1,0 +1,57 @@
+# =============================================================================
+# `policies` subgraph SDL — the Policy entity, plus a CONTRIBUTION onto the
+# Account entity (owned by accounts-subgraph): `Account.policies`.
+#
+# This is the piece that makes the topology true Federation v2 rather than
+# REST aggregation: two independently deployable subgraphs (accounts,
+# policies) both contribute fields to the *same* logical Account entity, and
+# the query planner merges them via `@key(fields: "id")` — no gateway-level
+# @derive/@require needed, unlike the REST-extension approach in
+# ../REST_FEDERATION.md.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@external"])
+
+scalar Date
+
+type Policy @key(fields: "id") {
+  id: ID!
+  policyNumber: String!
+  accountId: ID!
+  customerId: ID!
+  policyType: PolicyType!
+  productName: String!
+  status: PolicyStatus!
+  startDate: Date!
+  premiumMonthly: Float!
+  sumAssured: Float!
+  insuredPerson: String!
+  linkedFunds: [Fund!]!
+}
+
+# Unresolvable stub — only the key. Full Fund fields resolve via the `funds`
+# subgraph's `_entities` fetch.
+type Fund @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+# Contributes `policies` onto the Account entity owned by accounts-subgraph.
+extend type Account @key(fields: "id") {
+  id: ID! @external
+  policies: [Policy!]!
+}
+
+enum PolicyType {
+  LIFE_INSURANCE
+  PENSION_ANNUITY
+  INVESTMENT_BOND
+}
+
+enum PolicyStatus {
+  IN_FORCE
+  ACCUMULATING
+}
+
+type Query {
+  policy(id: ID!): Policy
+}

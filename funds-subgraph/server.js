@@ -38,8 +38,10 @@ const typeDefs = parse(/* GraphQL */ `
     oneYearReturnPercent: Float!
     threeYearReturnPercent: Float!
     sustainabilityLabel: SustainabilityLabel!
+    launchDate: Date
   }
 
+  scalar Date
   enum AssetClass { EQUITY FIXED_INCOME CASH }
   enum SustainabilityLabel { STANDARD SUSTAINABLE TRANSITION }
 

@@ -75,7 +75,8 @@ type Query {
         ongoingChargePercent,
         oneYearReturnPercent,
         threeYearReturnPercent,
-        sustainabilityLabel
+        sustainabilityLabel,
+        launchDate
       }
       """
     )

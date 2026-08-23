@@ -1,0 +1,15 @@
+{
+  "name": "accounts-subgraph",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real GraphQL federation subgraph for Account (GraphQL Yoga + @apollo/subgraph). Built for the Grafbase-vs-Hive-Router gateway evaluation spike so both gateways can federate a genuine multi-subgraph topology instead of the REST-extension virtual subgraph.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "^2.9.3",
+    "graphql": "^16.9.0",
+    "graphql-yoga": "^5.10.4"
+  }
+}

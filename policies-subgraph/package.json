@@ -1,0 +1,15 @@
+{
+  "name": "policies-subgraph",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Real GraphQL federation subgraph for Policy (GraphQL Yoga + @apollo/subgraph), contributing the `policies` field onto the Account entity owned by accounts-subgraph. Built for the Grafbase-vs-Hive-Router gateway evaluation spike.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "^2.9.3",
+    "graphql": "^16.9.0",
+    "graphql-yoga": "^5.10.4"
+  }
+}
