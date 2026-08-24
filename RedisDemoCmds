@@ -1,0 +1,51 @@
+Files:
+docker-compose.gateway.yml
+Dockerfile.gateway
+gateway-entrypoint.sh
+
+
+docker compose -f docker-compose.gateway.yml up --build -d
+
+
+curl -s localhost:5060/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ holderName fundHoldings { fund { id name currency } } } }"}' \
+  | jq '.data.account.fundHoldings[].fund'
+
+
+docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-*'
+
+TTL 
+K=$(docker compose -f docker-compose.gateway.yml exec -T redis redis-cli --scan --pattern 'insurance-entitycache*' | head -1 | tr -d '\r')
+docker compose -f docker-compose.gateway.yml exec redis redis-cli TTL "$K"
+curl -s localhost:5060/graphql -H 'content-type: application/json' -d "$Q" >/dev/null
+docker compose -f docker-compose.gateway.yml exec redis redis-cli TTL "$K"  
+
+
+Restart 
+
+docker compose -f docker-compose.gateway.yml exec redis redis-cli DBSIZE
+docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway
+sleep 8
+docker compose -f docker-compose.gateway.yml exec redis redis-cli DBSIZE   # still > 0
+docker compose -f docker-compose.gateway.yml exec redis redis-cli --scan --pattern 'insurance-entitycache*'
+
+
+Valkey
+
+docker compose -f docker-compose.gateway.yml down -v
+CACHE_IMAGE=valkey/valkey:8-alpine CACHE_CLI=valkey-cli \
+  docker compose -f docker-compose.gateway.yml up -d
+sleep 12
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli FLUSHALL
+curl -s localhost:5060/graphql -H 'content-type: application/json' -d "$Q" >/dev/null
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli --scan --pattern 'insurance-entitycache*'
+docker compose -f docker-compose.gateway.yml exec redis valkey-cli INFO server | grep -iE 'server_name|valkey_version'
+
+
+scripts
+
+scripts/run-valkey-cache-test.sh   
+scripts/dump-redis-cache.sh
+
+scripts/test-entity-caching.sh both  
