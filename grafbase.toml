@@ -25,6 +25,11 @@ url = "http://localhost:3009/graphql"
 schema_path = "funds-subgraph/funds.graphql"
 
 # Entity caching for the funds subgraph (overrides the global ttl below).
+# NOTE: this cache sits IN FRONT of `rest-cache` (the tag-invalidated REST-boundary
+# cache). Invalidating a fund tag in rest-cache is NOT visible through the gateway
+# until this TTL expires. docker/gateway-entrypoint.sh therefore rewrites this
+# value from $FUNDS_ENTITY_TTL (default 5s) so invalidation is demonstrable;
+# set FUNDS_ENTITY_TTL=120s to restore the original entity-caching demo.
 [subgraphs.funds.entity_caching]
 enabled = true
 ttl = "120s"

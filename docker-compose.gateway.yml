@@ -68,6 +68,38 @@ services:
     ports:
       - "3002:3002"
 
+  # ---------------------------------------------------------------------------
+  # Tag-invalidated cache at the REST boundary. Sits between the gateway's REST
+  # extension / funds-subgraph and the three REST services, caching GET responses
+  # in Redis db 1 with a real tag -> keys SET index. This is the layer Grafbase
+  # Entity Cache cannot provide (its keys are unreconstructible hashes and it has
+  # no delete). See rest-cache/README.md.
+  #
+  # Toggle it OFF without editing anything: point the consumers back at the REST
+  # services directly (ACCOUNTS_UPSTREAM / POLICIES_UPSTREAM / FUNDS_REST_URL).
+  # ---------------------------------------------------------------------------
+  rest-cache:
+    build:
+      context: ./rest-cache
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "1"                       # db 0 is Grafbase's; never collide
+      CACHE_TTL_SECONDS: "${CACHE_TTL_SECONDS:-600}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      accounts-rest:
+        condition: service_started
+      policies-rest:
+        condition: service_started
+      funds-rest:
+        condition: service_started
+    ports:
+      - "3101:3101"   # -> accounts-rest:3001
+      - "3102:3102"   # -> funds-rest:3002
+      - "3103:3103"   # -> policies-rest:3003
+
   # The `funds` GraphQL federation subgraph (Yoga). This is the REAL subgraph
   # whose `_entities` responses ENTITY CACHING stores in Redis. It wraps the
   # funds REST service.
@@ -76,10 +108,12 @@ services:
       context: ./funds-subgraph
     environment:
       FUNDS_SUBGRAPH_PORT: 3009
-      FUNDS_REST_URL: http://funds-rest:3002
+      FUNDS_REST_URL: ${FUNDS_REST_URL:-http://rest-cache:3102}   # was http://funds-rest:3002
       FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
     depends_on:
       funds-rest:
+        condition: service_started
+      rest-cache:
         condition: service_started
     ports:
       - "3009:3009"
@@ -122,6 +156,8 @@ services:
         condition: service_started
       funds-subgraph:
         condition: service_started
+      rest-cache:
+        condition: service_started
       redis:
         condition: service_healthy
     environment:
@@ -130,6 +166,15 @@ services:
       # Forwarded to @restEndpoint headers via grafbase.toml -> {{ config.* }}.
       ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
       POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      # REST extension talks to the tag-invalidated cache, not the REST services
+      # directly. Set these back to http://accounts-rest:3001 /
+      # http://policies-rest:3003 to bypass the cache entirely.
+      ACCOUNTS_UPSTREAM: ${ACCOUNTS_UPSTREAM:-http://rest-cache:3101}
+      POLICIES_UPSTREAM: ${POLICIES_UPSTREAM:-http://rest-cache:3103}
+      # Grafbase's entity cache masks rest-cache invalidation for its whole TTL.
+      # Low by default so tag invalidation is demonstrable; 120s restores the
+      # original entity-caching demo.
+      FUNDS_ENTITY_TTL: ${FUNDS_ENTITY_TTL:-5s}
 
 volumes:
   # Shares the same named volume as docker-compose.yml (same compose project),

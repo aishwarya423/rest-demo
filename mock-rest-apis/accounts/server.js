@@ -121,6 +121,17 @@ function makeRouter(serviceName) {
 
     if (!authorize(req, res)) return;
 
+    // DEMO-ONLY: mutate an account in memory so cache-invalidation can be shown
+    // end to end (stale -> invalidate -> fresh). Without a way to change the
+    // data, an invalidation demo can only prove "the key was deleted", not
+    // "stale content became fresh". See rest-cache/README.md.
+    //   curl -XPATCH localhost:3001/accounts/acct-1001 \
+    //     -H 'content-type: application/json' -H 'X-Api-Key: accounts-local-key' \
+    //     -d '{"holderName":"CHANGED IN AEM"}'
+    if (req.method === "PATCH" && serviceName === "accounts") {
+      return patchAccount(url, req, res);
+    }
+
     if (serviceName === "accounts") return accountsRouter(url, res);
   };
 }
@@ -136,6 +147,27 @@ function accountsRouter(url, res) {
     return sendJson(res, 200, accounts.filter((item) => item.customerId === parts[1]));
   }
   return notFound(res);
+}
+
+// DEMO-ONLY (see the PATCH note above) — shallow-merges the body into the
+// in-memory record. Nothing is persisted; a restart resets it.
+function patchAccount(url, req, res) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts[0] !== "accounts" || !parts[1]) return notFound(res);
+  const account = accounts.find((item) => item.id === parts[1]);
+  if (!account) return notFound(res);
+
+  let raw = "";
+  req.on("data", (c) => (raw += c));
+  req.on("end", () => {
+    try {
+      Object.assign(account, JSON.parse(raw || "{}"));
+    } catch {
+      return sendJson(res, 400, { error: "invalid JSON body" });
+    }
+    console.log(`[accounts] PATCHED ${account.id}`);
+    sendJson(res, 200, account);
+  });
 }
 
 http.createServer(makeRouter(serviceName)).listen(port, () => {

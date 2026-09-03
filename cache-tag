@@ -1,0 +1,31 @@
+SPIKE: Investigate cache tag mechanism with Redis/Valkey Entity Cache
+
+Key details
+ 
+Description
+Investigate whether Grafbase Entity Cache can support cache tag-like functionality to enable selective invalidation of cached entities stored in Redis/Valkey. The investigation should determine whether Grafbase provides any native mechanism for grouping, identifying, or selectively invalidating Entity Cache entries, and whether a custom implementation can achieve behaviour similar to cache tags
+Last Comment
+ 
+Acceptance Criteria
+1. Determine whether Grafbase provides any native cache tag or tag-like functionality. 
+2. Identify how Entity Cache entries are storedsin Redis/Valkey. 
+3. Confirm whether Entity Cache keys are accessible or configurable 
+4. Evaluate whether custom solution that can map entities to logical tags/groups. 
+5. Determine whether a custom invalidator can safely invalidate targeted cache entries 
+6. Document findings, limitations, and the recommended approach. 
+7. Check how cache metadata internally in grafbase using Redis/Valkey and whether it supports any data structures ( SET - Unordered unique collection & ZSET- Collection with scores/order)
+ 
+1. Review Grafbase documentation and source code for cache tag or tag-like capabilities. 
+2. Inspect Redis/Valkey Entity Cache storage structure. 
+3. Determine how Entity Cache keys are generated and managed 4. Investigate supported cache invalidation mechanisms. 5. Explore options for implementing cache tag-like behaviour outside of Grafbase's native functionality 6. Recommend a feasible approach based on the findings.
+
+
+Out of Scope
+1.⁠ ⁠Implementing cache tag functionality in Grafbase. 
+2. Modifying Grafbase source code.
+Original estimate
+3.⁠ ⁠Building a production-ready cache invalidation service. 
+4. Performance benchmarking of cache invalidation approaches.
+Components
+5.⁠ ⁠Changes to existing application caching behaviour beyond investigation and proof-of-concept validation.
+  

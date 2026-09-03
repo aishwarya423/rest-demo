@@ -1,0 +1,13 @@
+{
+  "name": "rest-cache",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tag-invalidated cache at the REST boundary — Redis/Valkey SET tag index + selective invalidation. The layer Grafbase Entity Cache cannot provide.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.1"
+  }
+}
