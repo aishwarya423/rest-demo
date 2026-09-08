@@ -34,8 +34,20 @@ COPY grafbase.toml schema.graphql ./
 COPY grafbase_extensions ./grafbase_extensions
 # the funds subgraph SDL — `grafbase compose` reads it via schema_path
 COPY funds-subgraph/funds.graphql ./funds-subgraph/funds.graphql
-COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
-RUN chmod +x /usr/local/bin/gateway-entrypoint.sh
 
-EXPOSE 5060
+# --- tag-caching stack (docker-compose.tagcache.yml) -------------------------
+# Same image, different config + entrypoint: the 3 REST-backed subgraphs that
+# cache their own REST calls in Valkey with entity tags. Selected by the
+# `entrypoint:` override on the compose service, so the default (entity-caching)
+# behaviour below is untouched.
+COPY grafbase.tagcache.toml ./
+COPY subgraphs/accounts/accounts.graphql ./subgraphs/accounts/accounts.graphql
+COPY subgraphs/policies/policies.graphql ./subgraphs/policies/policies.graphql
+COPY subgraphs/funds/funds.graphql ./subgraphs/funds/funds.graphql
+COPY docker/tagcache-gateway-entrypoint.sh /usr/local/bin/tagcache-gateway-entrypoint.sh
+
+COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
+RUN chmod +x /usr/local/bin/gateway-entrypoint.sh /usr/local/bin/tagcache-gateway-entrypoint.sh
+
+EXPOSE 5060 5070
 ENTRYPOINT ["/usr/local/bin/gateway-entrypoint.sh"]

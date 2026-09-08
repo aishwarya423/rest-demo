@@ -1,0 +1,168 @@
+# =============================================================================
+# TAG-CACHING compose — the REST-response cache with entity-tag invalidation.
+#
+# Three REST-backed GraphQL federation subgraphs (subgraphs/) each cache their
+# own REST calls in Valkey under `subgraph:<service>:<route>` and register every
+# key in per-entity tag SETs (`tag:Account`, `tag:Account:acct-1001`, ...).
+# A single POST /purge on any subgraph's management port then invalidates
+# ACROSS services — no cache-key bookkeeping in the caller.
+#
+# This is DIFFERENT from docker-compose.gateway.yml (gateway operation/entity
+# caching, `insurance-*` keys). Run one or the other — they share ports
+# 3001-3003 and 6379.
+#
+# ─── RUN ──────────────────────────────────────────────────────────────────────
+#   docker compose -f docker-compose.tagcache.yml up --build -d
+#   GraphQL: http://localhost:5070/graphql
+#
+# ─── WATCH THE CACHE ─────────────────────────────────────────────────────────
+#   docker exec -it rest-demo-valkey-1 valkey-cli MONITOR
+#   (container name = <compose project>-valkey-1; `docker compose -f
+#    docker-compose.tagcache.yml ps` shows the real one)
+#
+#   ...then, in another terminal, cross all three subgraphs in one query:
+#   curl -s localhost:5070/graphql -H 'content-type: application/json' \
+#     -d '{"query":"{ account(id:\"acct-1001\"){ holderName policies { policyNumber } fundHoldings { fund { id name } } } }"}'
+#
+# ─── PURGE BY TAG ────────────────────────────────────────────────────────────
+#   curl -s localhost:4011/tags/Account:acct-1001            # what is registered
+#   curl -s -XPOST localhost:4011/purge -H 'content-type: application/json' \
+#        -d '{"tags":["Account:acct-1001"]}'                 # drops accounts +
+#                                                            # policies entries
+#   Ports: accounts 4011, funds 4012, policies 4013 (any of them can purge any
+#   tag — they all talk to the same Valkey).
+#
+# ─── OR the one-command script ───────────────────────────────────────────────
+#   scripts/run-tag-cache-test.sh
+# =============================================================================
+services:
+
+  accounts-rest:
+    build:
+      context: ./mock-rest-apis/accounts
+    environment:
+      SERVICE_NAME: accounts
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports:
+      - "3001:3001"
+
+  policies-rest:
+    build:
+      context: ./mock-rest-apis/policies
+    environment:
+      SERVICE_NAME: policies
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports:
+      - "3003:3003"
+
+  funds-rest:
+    build:
+      context: ./mock-rest-apis/funds
+    environment:
+      SERVICE_NAME: funds
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports:
+      - "3002:3002"
+
+  # Cache backend. Valkey by default (drop-in Redis fork, same RESP protocol) —
+  # swap with CACHE_IMAGE=redis:7-alpine CACHE_CLI=redis-cli.
+  valkey:
+    image: ${CACHE_IMAGE:-valkey/valkey:8-alpine}
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - tagcache-data:/data
+    healthcheck:
+      test: ["CMD", "${CACHE_CLI:-valkey-cli}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- the three cached subgraphs -------------------------------------------
+  # Same image (subgraphs/Dockerfile); $SUBGRAPH picks which server runs.
+  # <graphql port> / <management port = graphql + 1000>.
+  accounts-subgraph:
+    build:
+      context: ./subgraphs
+    environment:
+      SUBGRAPH: accounts
+      ACCOUNTS_SUBGRAPH_PORT: 3011
+      ACCOUNTS_REST_URL: http://accounts-rest:3001
+      ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      CACHE_TTL: ${ACCOUNTS_CACHE_TTL:-120}
+      # Tag SETs are shared across the three services, so they all use the
+      # SAME index TTL, >= the longest data TTL (funds, 300s). See lib/cache.js.
+      TAG_INDEX_TTL: ${TAG_INDEX_TTL:-600}
+    depends_on:
+      accounts-rest:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    ports:
+      - "3011:3011"
+      - "4011:4011"
+
+  policies-subgraph:
+    build:
+      context: ./subgraphs
+    environment:
+      SUBGRAPH: policies
+      POLICIES_SUBGRAPH_PORT: 3013
+      POLICIES_REST_URL: http://policies-rest:3003
+      POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      # Policies churn fastest -> shortest TTL of the three.
+      CACHE_TTL: ${POLICIES_CACHE_TTL:-30}
+      TAG_INDEX_TTL: ${TAG_INDEX_TTL:-600}
+    depends_on:
+      policies-rest:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    ports:
+      - "3013:3013"
+      - "4013:4013"
+
+  funds-subgraph:
+    build:
+      context: ./subgraphs
+    environment:
+      SUBGRAPH: funds
+      FUNDS_SUBGRAPH_PORT: 3012
+      FUNDS_REST_URL: http://funds-rest:3002
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      # Fund reference data is the slowest-moving -> longest TTL.
+      CACHE_TTL: ${FUNDS_CACHE_TTL:-300}
+      TAG_INDEX_TTL: ${TAG_INDEX_TTL:-600}
+    depends_on:
+      funds-rest:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    ports:
+      - "3012:3012"
+      - "4012:4012"
+
+  # Federating gateway. Same image as the entity-caching stack, but started with
+  # the tagcache entrypoint + config (no gateway-side caching — see
+  # grafbase.tagcache.toml for why).
+  tagcache-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    entrypoint: ["/usr/local/bin/tagcache-gateway-entrypoint.sh"]
+    ports:
+      - "5070:5070"
+    depends_on:
+      accounts-subgraph:
+        condition: service_started
+      policies-subgraph:
+        condition: service_started
+      funds-subgraph:
+        condition: service_started
+
+volumes:
+  tagcache-data:

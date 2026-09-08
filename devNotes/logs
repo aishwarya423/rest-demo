@@ -1,0 +1,232 @@
+make below kind of cach tag working in this project 
+
+
+my output should look smtg like below 
+
+aishwaryapalarapu@Unknown_32:8f:3b:96:9a:e4 GrafbasePOC % docker exec -it grafbasepoc-valkey-1 valkey-cli MONITOR
+OK
+1788795126.515452 [0 127.0.0.1:41004] "ping"
+1788795131.559792 [0 127.0.0.1:41018] "ping"
+1788795132.643643 [0 172.18.0.7:33306] "get" "subgraph:accounts:/accounts/acct-1001"
+1788795132.663958 [0 172.18.0.7:33306] "set" "subgraph:accounts:/accounts/acct-1001" "{\"id\":\"acct-1001\",\"customerId\":\"cust-501\",\"holderName\":\"Anika Rao\",\"accountType\":\"PENSION\",\"status\":\"ACTIVE\",\"openedDate\":\"2016-04-18\",\"pensionProvider\":\"Northstar Retirement\",\"riskProfile\":\"BALANCED\",\"totalValue\":186420.75,\"contributionRate\":8.5,\"fundHoldings\":[{\"fundId\":\"fund-global-equity\",\"allocationPercent\":45,\"units\":1230.52,\"currentValue\":83900.12},{\"fundId\":\"fund-green-bond\",\"allocationPercent\":30,\"units\":812.08,\"currentValue\":55926.22},{\"fundId\":\"fund-cash-plus\",\"allocationPercent\":25,\"units\":512.2,\"currentValue\":46594.41}]}" "EX" "120"
+1788795132.663986 [0 172.18.0.7:33306] "sadd" "tag:Account" "subgraph:accounts:/accounts/acct-1001"
+1788795132.663995 [0 172.18.0.7:33306] "expire" "tag:Account" "240"
+1788795132.663999 [0 172.18.0.7:33306] "sadd" "tag:Account:acct-1001" "subgraph:accounts:/accounts/acct-1001"
+1788795132.664002 [0 172.18.0.7:33306] "expire" "tag:Account:acct-1001" "240"
+1788795132.678538 [0 172.18.0.8:49430] "get" "subgraph:policies:/accounts/acct-1001/policies"
+1788795132.678791 [0 172.18.0.6:36014] "get" "subgraph:funds:/funds/fund-global-equity"
+1788795132.678881 [0 172.18.0.6:36014] "get" "subgraph:funds:/funds/fund-green-bond"
+1788795132.678975 [0 172.18.0.6:36014] "get" "subgraph:funds:/funds/fund-cash-plus"
+1788795132.697045 [0 172.18.0.8:49430] "set" "subgraph:policies:/accounts/acct-1001/policies" "[{\"id\":\"pol-life-3001\",\"policyNumber\":\"LIF-UK-3001\",\"accountId\":\"acct-1001\",\"customerId\":\"cust-501\",\"policyType\":\"LIFE_INSURANCE\",\"productName\":\"Family Life Protect\",\"status\":\"IN_FORCE\",\"startDate\":\"2018-06-01\",\"premiumMonthly\":42.5,\"sumAssured\":450000,\"insuredPerson\":\"Anika Rao\",\"fundIds\":[]},{\"id\":\"pol-annuity-3002\",\"policyNumber\":\"ANN-RET-3002\",\"accountId\":\"acct-1001\",\"customerId\":\"cust-501\",\"policyType\":\"PENSION_ANNUITY\",\"productName\":\"Retirement Income Builder\",\"status\":\"ACCUMULATING\",\"startDate\":\"2019-03-15\",\"premiumMonthly\":625,\"sumAssured\":0,\"insuredPerson\":\"Anika Rao\",\"fundIds\":[\"fund-global-equity\",\"fund-green-bond\"]}]" "EX" "30"
+1788795132.697066 [0 172.18.0.8:49430] "sadd" "tag:Account:acct-1001" "subgraph:policies:/accounts/acct-1001/policies"
+1788795132.697072 [0 172.18.0.8:49430] "expire" "tag:Account:acct-1001" "60"
+1788795132.697076 [0 172.18.0.8:49430] "sadd" "tag:Policy" "subgraph:policies:/accounts/acct-1001/policies"
+1788795132.697079 [0 172.18.0.8:49430] "expire" "tag:Policy" "60"
+1788795132.700045 [0 172.18.0.6:36014] "set" "subgraph:funds:/funds/fund-global-equity" "{\"id\":\"fund-global-equity\",\"isin\":\"GB00GLBEQ001\",\"name\":\"Global Equity Index\",\"assetClass\":\"EQUITY\",\"currency\":\"GBP\",\"riskRating\":5,\"ongoingChargePercent\":0.18,\"oneYearReturnPercent\":12.4,\"threeYearReturnPercent\":28.6,\"sustainabilityLabel\":\"STANDARD\"}" "EX" "300"
+1788795132.700056 [0 172.18.0.6:36014] "sadd" "tag:Fund" "subgraph:funds:/funds/fund-global-equity"
+1788795132.700068 [0 172.18.0.6:36014] "expire" "tag:Fund" "600"
+1788795132.700072 [0 172.18.0.6:36014] "sadd" "tag:Fund:fund-global-equity" "subgraph:funds:/funds/fund-global-equity"
+1788795132.700074 [0 172.18.0.6:36014] "expire" "tag:Fund:fund-global-equity" "600"
+1788795132.701055 [0 172.18.0.6:36014] "set" "subgraph:funds:/funds/fund-green-bond" "{\"id\":\"fund-green-bond\",\"isin\":\"GB00GRNBD002\",\"name\":\"Green Bond Income\",\"assetClass\":\"FIXED_INCOME\",\"currency\":\"GBP\",\"riskRating\":3,\"ongoingChargePercent\":0.22,\"oneYearReturnPercent\":5.8,\"threeYearReturnPercent\":13.2,\"sustainabilityLabel\":\"SUSTAINABLE\"}" "EX" "300"
+1788795132.701063 [0 172.18.0.6:36014] "sadd" "tag:Fund" "subgraph:funds:/funds/fund-green-bond"
+1788795132.701064 [0 172.18.0.6:36014] "expire" "tag:Fund" "600"
+1788795132.701066 [0 172.18.0.6:36014] "sadd" "tag:Fund:fund-green-bond" "subgraph:funds:/funds/fund-green-bond"
+1788795132.701067 [0 172.18.0.6:36014] "expire" "tag:Fund:fund-green-bond" "600"
+1788795132.701577 [0 172.18.0.6:36014] "set" "subgraph:funds:/funds/fund-cash-plus" "{\"id\":\"fund-cash-plus\",\"isin\":\"GB00CASHP003\",\"name\":\"Cash Plus Reserve\",\"assetClass\":\"CASH\",\"currency\":\"GBP\",\"riskRating\":1,\"ongoingChargePercent\":0.08,\"oneYearReturnPercent\":4.1,\"threeYearReturnPercent\":8.4,\"sustainabilityLabel\":\"STANDARD\"}" "EX" "300"
+1788795132.701583 [0 172.18.0.6:36014] "sadd" "tag:Fund" "subgraph:funds:/funds/fund-cash-plus"
+1788795132.701585 [0 172.18.0.6:36014] "expire" "tag:Fund" "600"
+1788795132.701587 [0 172.18.0.6:36014] "sadd" "tag:Fund:fund-cash-plus" "subgraph:funds:/funds/fund-cash-plus"
+1788795132.701588 [0 172.18.0.6:36014] "expire" "tag:Fund:fund-cash-plus" "600"
+
+
+
+with below kind of code
+
+
+// ---------------------------------------------------------------------------
+// Entity tagging
+//
+// Each cached entry carries a list of tags (e.g. ["Account", "Account:acct-1001"])
+// derived from the REST route. Tags are stored as Valkey SETs:
+//
+//     tag:Account:acct-1001  →  { subgraph:accounts:/accounts/acct-1001, ... }
+//
+// Invalidating a tag (e.g. POST /purge {"tags":["Account:acct-1001"]}) deletes
+// every cache entry that registered that tag in one operation — no need to
+// know individual cache keys.
+// ---------------------------------------------------------------------------
+function tagsForRoute(route) {
+  // Patterns we understand. Order matters — more specific patterns first.
+  const patterns = [
+    // /accounts/{id}/policies → tied to that account + the Policy collection
+    { re: /^\/accounts\/([^/]+)\/policies$/, tags: (m) => [`Account:${m[1]}`, "Policy"] },
+    // /accounts/{id}/funds → tied to that account + the Fund collection
+    { re: /^\/accounts\/([^/]+)\/funds$/, tags: (m) => [`Account:${m[1]}`, "Fund"] },
+    // /accounts/{id}
+    { re: /^\/accounts\/([^/]+)$/, tags: (m) => ["Account", `Account:${m[1]}`] },
+    // /accounts (list)
+    { re: /^\/accounts$/, tags: () => ["Account"] },
+    // /customers/{id}/accounts → tied to that customer + Account collection
+    { re: /^\/customers\/([^/]+)\/accounts$/, tags: (m) => [`Customer:${m[1]}`, "Account"] },
+    // /policies/{id}
+    { re: /^\/policies\/([^/]+)$/, tags: (m) => ["Policy", `Policy:${m[1]}`] },
+    // /policies (list)
+    { re: /^\/policies$/, tags: () => ["Policy"] },
+    // /funds/{id}/policies → tied to that fund + Policy collection
+    { re: /^\/funds\/([^/]+)\/policies$/, tags: (m) => [`Fund:${m[1]}`, "Policy"] },
+    // /funds/{id}
+    { re: /^\/funds\/([^/]+)$/, tags: (m) => ["Fund", `Fund:${m[1]}`] },
+    // /funds (list)
+    { re: /^\/funds$/, tags: () => ["Fund"] }
+  ];
+
+  for (const { re, tags } of patterns) {
+    const m = route.match(re);
+    if (m) return tags(m);
+  }
+  return []; // unknown shape — no tags, cached but not purgable by tag
+}
+
+const tagIndexKey = (tag) => `tag:${tag}`;
+
+
+
+// ---------------------------------------------------------------------------
+// Cache-aware wrapper around requestJson.
+// Key pattern: subgraph:<service>:<route>  e.g. subgraph:accounts:/accounts/acct-1001
+// On HIT  → returns parsed JSON from Valkey, REST API is NOT called.
+// On MISS → calls REST API, stores result in Valkey with EX TTL, registers tags.
+// ---------------------------------------------------------------------------
+async function cachedRequestJson(route) {
+  const key = `subgraph:${serviceName}:${route}`;
+
+  if (redis && redis.status === "ready") {
+    const cached = await redis.get(key);
+    if (cached !== null) {
+      console.log(`[cache HIT]  ${key}`);
+      return JSON.parse(cached);
+    }
+    console.log(`[cache MISS] ${key}`);
+  }
+
+  const data = await requestJson(route);
+
+  if (redis && redis.status === "ready" && data !== null) {
+    const tags = tagsForRoute(route);
+    // Pipeline: set the entry + register the key under each tag SET.
+    // Tag SETs are not TTL'd individually — stale members get cleaned up
+    // when purgeTags runs (it deletes the SET entirely after invalidation).
+    const pipeline = redis.pipeline();
+    pipeline.set(key, JSON.stringify(data), "EX", cacheTtl);
+    for (const tag of tags) {
+      pipeline.sadd(tagIndexKey(tag), key);
+      // Give the tag index a TTL slightly longer than the data TTL so it
+      // expires on its own if nobody purges — prevents unbounded growth.
+      pipeline.expire(tagIndexKey(tag), cacheTtl * 2);
+    }
+    await pipeline.exec();
+    if (tags.length > 0) {
+      console.log(`[cache SET]  ${key} tags=[${tags.join(", ")}]`);
+    }
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Tag-based invalidation: deletes every cache entry registered under any of
+// the supplied tags, then deletes the tag indexes themselves.
+// Returns { purgedKeys, purgedTags } for the response.
+// ---------------------------------------------------------------------------
+async function purgeTags(tags) {
+  if (!redis || redis.status !== "ready") {
+    return { purgedKeys: 0, purgedTags: 0, error: "cache unavailable" };
+  }
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return { purgedKeys: 0, purgedTags: 0 };
+  }
+
+  const indexKeys = tags.map(tagIndexKey);
+  // Gather all cache keys registered under any of the tags
+  const memberLists = await Promise.all(indexKeys.map((k) => redis.smembers(k)));
+  const cacheKeys = [...new Set(memberLists.flat())];
+
+  const pipeline = redis.pipeline();
+  if (cacheKeys.length > 0) pipeline.del(...cacheKeys);
+  if (indexKeys.length > 0) pipeline.del(...indexKeys);
+  await pipeline.exec();
+
+  console.log(`[cache PURGE] tags=[${tags.join(", ")}] removed ${cacheKeys.length} key(s)`);
+  return { purgedKeys: cacheKeys.length, purgedTags: tags.length, keys: cacheKeys };
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// Management HTTP endpoint for cache-tag invalidation.
+//
+//   POST /purge   { "tags": ["Account:acct-1001", "Policy"] }
+//     → deletes every cached entry tagged with any of the given tags
+//
+//   GET /tags/:tag
+//     → lists cache keys currently registered under a tag
+//
+//   GET /health
+//     → simple liveness check
+//
+// Exposed on MGMT_PORT (default = PORT + 1000). Kept separate from the
+// GraphQL endpoint so the federation contract stays clean.
+// ---------------------------------------------------------------------------
+const mgmt = http.createServer(async (req, res) => {
+  const send = (status, body) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
+
+  try {
+    if (req.method === "GET" && req.url === "/health") {
+      return send(200, { service: serviceName, cache: redis?.status || "disabled" });
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/tags/")) {
+      const tag = decodeURIComponent(req.url.slice("/tags/".length));
+      if (!redis || redis.status !== "ready") return send(503, { error: "cache unavailable" });
+      const members = await redis.smembers(tagIndexKey(tag));
+      return send(200, { tag, keys: members });
+    }
+
+    if (req.method === "POST" && req.url === "/purge") {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", async () => {
+        try {
+          const { tags } = JSON.parse(raw || "{}");
+          if (!Array.isArray(tags)) {
+            return send(400, { error: "body must be { tags: string[] }" });
+          }
+          const result = await purgeTags(tags);
+          return send(200, result);
+        } catch (e) {
+          return send(400, { error: e.message });
+        }
+      });
+      return;
+    }
+
+    send(404, { error: "not found", routes: ["GET /health", "GET /tags/:tag", "POST /purge"] });
+  } catch (e) {
+    send(500, { error: e.message });
+  }
+});
+
+mgmt.listen(mgmtPort, "0.0.0.0", () => {
+  console.log(`${serviceName} cache management API ready at http://0.0.0.0:${mgmtPort}`);
+});
+
+
+
+the main purpose im doing is to implement a caching mechanism with tag-based invalidation 
+for a project using JavaScript.
+ The provided code outlines how to manage cache entries in Redis, 
+ associate them with tags, 
+ and provide an HTTP management interface for purging cache entries based on those tags.

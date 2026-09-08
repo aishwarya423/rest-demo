@@ -1,0 +1,54 @@
+# =============================================================================
+# `policies` subgraph SDL — owns the Policy entity and CONTRIBUTES the
+# `policies` field to Account (and to Fund).
+#
+# Served by policies/server.js as a facade over the policies REST API. Its REST
+# calls are cached under `subgraph:policies:<route>` and tagged so that a purge
+# of `Account:acct-1001` drops BOTH the account entry (owned by the accounts
+# subgraph) and this subgraph's /accounts/acct-1001/policies entry.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+scalar Date
+
+type Policy @key(fields: "id") {
+  id: ID!
+  policyNumber: String!
+  accountId: ID!
+  customerId: ID!
+  policyType: PolicyType!
+  productName: String!
+  status: PolicyStatus!
+  startDate: Date!
+  premiumMonthly: Float!
+  """0 when not applicable"""
+  sumAssured: Float!
+  insuredPerson: String!
+  # Cross-subgraph Fund references, built from the REST payload's fundIds.
+  linkedFunds: [Fund!]!
+}
+
+# Account lives in the `accounts` subgraph; here we only add `policies`.
+# GET /accounts/{id}/policies   tags: Account:{id}, Policy
+type Account @key(fields: "id") {
+  id: ID!
+  policies: [Policy!]!
+}
+
+# Fund lives in the `funds` subgraph; here we only add the reverse lookup.
+# GET /funds/{id}/policies      tags: Fund:{id}, Policy
+type Fund @key(fields: "id") {
+  id: ID!
+  policies: [Policy!]!
+}
+
+enum PolicyStatus { IN_FORCE ACCUMULATING }
+enum PolicyType { LIFE_INSURANCE PENSION_ANNUITY INVESTMENT_BOND }
+
+type Query {
+  # GET /policies/{id}   tags: Policy, Policy:{id}
+  policy(id: ID!): Policy
+  # GET /policies        tags: Policy
+  policies: [Policy!]!
+}

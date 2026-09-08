@@ -30,6 +30,26 @@ docker compose down --remove-orphans && lsof -iTCP:3001 -sTCP:LISTEN | grep -v C
 
 ---
 
+## Tag-based REST caching (Valkey)
+
+A second, independent caching layer: three REST-backed GraphQL subgraphs
+([`subgraphs/`](subgraphs/)) that cache **their own REST responses** in Valkey and
+tag every entry by entity (`Account`, `Account:acct-1001`, `Fund:fund-green-bond`,
+…), so a single `POST /purge {"tags":[…]}` invalidates across services. Unlike the
+gateway caches below, this one **does** cut REST round-trips and gives you
+invalidation that is not just a TTL.
+
+```bash
+npm run tagcache:up        # stack on http://localhost:5070/graphql
+npm run tagcache:monitor   # watch the cache live
+npm run tagcache:test      # clean-slate build + 13 assertions + report
+```
+
+Full guide: [`Docs/CACHE-TAGS.md`](Docs/CACHE-TAGS.md). Run it *instead of* the
+stack below — they share ports 3001-3003 and 6379.
+
+---
+
 ## Caching (Redis)
 
 This project uses **Redis** as the cache backend for the Grafbase gateway. Full

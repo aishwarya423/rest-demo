@@ -26,8 +26,10 @@
 So operation caching speeds up parse+validate+plan for repeated identical
 operations; it does **not** cache response data and does **not** cut load on the
 mock REST services. If your goal is fewer REST round-trips, cache at the REST
-layer (a Redis/proxy cache in front of the mock services) — that's independent
-of Grafbase.
+layer — that's independent of Grafbase, and it is exactly what
+[`Docs/CACHE-TAGS.md`](CACHE-TAGS.md) does: each subgraph caches its own REST
+responses in Valkey under entity tags, with purge-by-tag invalidation
+(`docker-compose.tagcache.yml`, `npm run tagcache:up`).
 
 ## The config (root `grafbase.toml`)
 

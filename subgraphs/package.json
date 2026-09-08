@@ -1,0 +1,18 @@
+{
+  "name": "tagcache-subgraphs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "REST-backed federation subgraphs (accounts/policies/funds) with Valkey tag-based caching + purge API.",
+  "type": "commonjs",
+  "scripts": {
+    "start:accounts": "node accounts/server.js",
+    "start:policies": "node policies/server.js",
+    "start:funds": "node funds/server.js"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "^2.9.3",
+    "graphql": "^16.9.0",
+    "graphql-yoga": "^5.10.4",
+    "ioredis": "^5.4.1"
+  }
+}

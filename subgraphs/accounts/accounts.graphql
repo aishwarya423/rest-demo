@@ -1,0 +1,57 @@
+# =============================================================================
+# `accounts` subgraph SDL — owns the Account entity.
+#
+# Served by accounts/server.js (GraphQL Yoga + @apollo/subgraph) as a facade
+# over the accounts REST API. Every REST call it makes is cached in Valkey under
+# `subgraph:accounts:<route>` and tagged (Account, Account:<id>, Customer:<id>).
+#
+# `grafbase compose` reads this SDL via schema_path in grafbase.tagcache.toml.
+# Keep in sync with accounts/server.js resolvers + the mock REST payload.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+scalar Date
+
+type Account @key(fields: "id") {
+  id: ID!
+  customerId: ID!
+  holderName: String!
+  accountType: AccountType!
+  status: AccountStatus!
+  openedDate: Date!
+  """null for non-pension accounts"""
+  pensionProvider: String
+  riskProfile: RiskProfile!
+  totalValue: Float!
+  """Percent; 0 when not contributing"""
+  contributionRate: Float!
+  fundHoldings: [FundHolding!]!
+}
+
+type FundHolding {
+  allocationPercent: Float!
+  units: Float!
+  currentValue: Float!
+  # Cross-subgraph reference — only the key is known here; the rest of Fund is
+  # resolved by the `funds` subgraph (which caches /funds/{id} under Fund tags).
+  fund: Fund!
+}
+
+# STUB: this subgraph only produces Fund keys, it never resolves Fund itself.
+type Fund @key(fields: "id", resolvable: false) {
+  id: ID!
+}
+
+enum AccountType { PENSION INVESTMENT_ISA }
+enum AccountStatus { ACTIVE }
+enum RiskProfile { CAUTIOUS BALANCED GROWTH }
+
+type Query {
+  # GET /accounts/{id}          tags: Account, Account:{id}
+  account(id: ID!): Account
+  # GET /accounts               tags: Account
+  accounts: [Account!]!
+  # GET /customers/{id}/accounts   tags: Customer:{id}, Account
+  customerAccounts(customerId: ID!): [Account!]!
+}

@@ -66,7 +66,9 @@ const resolvers = {
 };
 
 const yoga = createYoga({
-  schema: buildSubgraphSchema({ typeDefs, resolvers }),
+  // Array form: @apollo/subgraph >= 2.10 treats a bare object as SDL
+  // (`modulesFromSDL`), which throws "doc.definitions is not iterable".
+  schema: buildSubgraphSchema([{ typeDefs, resolvers }]),
   graphqlEndpoint: "/graphql",
   landingPage: false,
 });

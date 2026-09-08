@@ -1,0 +1,36 @@
+# =============================================================================
+# `funds` subgraph SDL — owns the full Fund entity.
+#
+# Same SDL as funds-subgraph/funds.graphql (the entity-caching demo), plus a
+# `funds` list query. The difference is in the SERVER: this one routes its REST
+# calls through the shared tag-aware cache, so each Fund lands in Valkey as
+# `subgraph:funds:/funds/{id}` tagged `Fund` + `Fund:{id}`.
+# =============================================================================
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key"])
+
+type Fund @key(fields: "id") {
+  id: ID!
+  """International Securities Identification Number"""
+  isin: String!
+  name: String!
+  assetClass: AssetClass!
+  """ISO 4217 currency code"""
+  currency: String!
+  """1 (lowest) to 7 (highest)"""
+  riskRating: Int!
+  ongoingChargePercent: Float!
+  oneYearReturnPercent: Float!
+  threeYearReturnPercent: Float!
+  sustainabilityLabel: SustainabilityLabel!
+}
+
+enum AssetClass { EQUITY FIXED_INCOME CASH }
+enum SustainabilityLabel { STANDARD SUSTAINABLE TRANSITION }
+
+type Query {
+  # GET /funds/{id}   tags: Fund, Fund:{id}
+  fund(id: ID!): Fund
+  # GET /funds        tags: Fund
+  funds: [Fund!]!
+}

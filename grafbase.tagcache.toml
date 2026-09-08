@@ -1,0 +1,33 @@
+# =============================================================================
+# Gateway config for the TAG-CACHING stack (docker-compose.tagcache.yml).
+#
+# Three REAL GraphQL federation subgraphs, each a facade over one REST service
+# and each caching its own REST calls in Valkey with entity TAGS
+# (see subgraphs/lib/cache.js). The REST extension is NOT used here — caching
+# has to happen in code we control, and the extension is a wasm component.
+#
+# GATEWAY-LEVEL CACHING IS DELIBERATELY OFF. Operation/entity caching would put
+# `insurance-opcache*` / `insurance-entitycache*` keys in the same Valkey and
+# short-circuit the subgraph fetches, hiding the very thing this stack is meant
+# to show. Keep grafbase.toml (+ docker-compose.gateway.yml) for that demo.
+#
+# URLs below are localhost so the stack can also be run on the host; the
+# entrypoint (docker/tagcache-gateway-entrypoint.sh) rewrites them to compose
+# service names inside Docker.
+# =============================================================================
+
+[subgraphs.accounts]
+url = "http://localhost:3011/graphql"
+schema_path = "subgraphs/accounts/accounts.graphql"
+
+[subgraphs.policies]
+url = "http://localhost:3013/graphql"
+schema_path = "subgraphs/policies/policies.graphql"
+
+[subgraphs.funds]
+url = "http://localhost:3012/graphql"
+schema_path = "subgraphs/funds/funds.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true
