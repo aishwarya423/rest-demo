@@ -1,0 +1,17 @@
+# The manifest deliberately keeps the UPSTREAM identity (`rest` 0.5.2) so this
+# build is a drop-in replacement: schema.graphql keeps its existing
+# @link(url: "https://grafbase.com/extensions/rest/0.5.2") and only the `path`
+# in grafbase.toml changes. The fork is identified by its directory, not its name.
+[extension]
+name = "rest"
+version = "0.5.2"
+kind = "resolver"
+description = "Declarative REST resolver extension, with a Redis response cache keyed by URL."
+license = "Apache-2.0"
+
+[resolver]
+directives = ["rest"]
+
+[permissions]
+# Required for both the REST calls (WASI HTTP) and the Redis connection (TCP).
+network = true

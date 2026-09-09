@@ -34,8 +34,18 @@ COPY grafbase.toml schema.graphql ./
 COPY grafbase_extensions ./grafbase_extensions
 # the funds subgraph SDL — `grafbase compose` reads it via schema_path
 COPY funds-subgraph/funds.graphql ./funds-subgraph/funds.graphql
-COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
-RUN chmod +x /usr/local/bin/gateway-entrypoint.sh
 
-EXPOSE 5060
+# --- forked caching rest extension (docker-compose.cached.yml) ---------------
+# Same image, different config + entrypoint (selected by the compose service's
+# `entrypoint:` override), so the default entity-caching setup below is
+# untouched. See extensions/rest-cached/ and Docs/EXTENSION-CACHE.md.
+COPY grafbase.cached.toml ./
+COPY grafbase_extensions/rest-cached ./grafbase_extensions/rest-cached
+COPY schema-gen/schema.generated.graphql ./schema-gen/schema.generated.graphql
+COPY docker/cached-gateway-entrypoint.sh /usr/local/bin/cached-gateway-entrypoint.sh
+
+COPY docker/gateway-entrypoint.sh /usr/local/bin/gateway-entrypoint.sh
+RUN chmod +x /usr/local/bin/gateway-entrypoint.sh /usr/local/bin/cached-gateway-entrypoint.sh
+
+EXPOSE 5060 5065
 ENTRYPOINT ["/usr/local/bin/gateway-entrypoint.sh"]

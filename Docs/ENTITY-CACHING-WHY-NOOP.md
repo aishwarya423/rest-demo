@@ -12,6 +12,11 @@
 > is enabled, `storage = "redis"`, TTL set. It still writes nothing to Redis.
 > The reason is topology, not configuration.
 
+> **Follow-up.** Entity caching now *does* write keys (Fund lives in its own
+> subgraph), but those keys are opaque hashes that nothing outside the gateway
+> can target for invalidation. If what you need is *invalidation* rather than
+> just caching, see [`EXTENSION-CACHE.md`](EXTENSION-CACHE.md).
+
 ---
 
 ## 1. What entity caching actually caches (per the docs)

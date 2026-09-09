@@ -30,6 +30,32 @@ docker compose down --remove-orphans && lsof -iTCP:3001 -sTCP:LISTEN | grep -v C
 
 ---
 
+## REST caching with readable keys (forked `rest` extension)
+
+The gateway's entity cache is TTL-only and its keys are opaque hashes, so nothing
+outside the gateway can invalidate one fund. [`extensions/rest-cached/`](extensions/rest-cached/)
+is a fork of the official `rest` extension that caches REST responses in
+Valkey/Redis under the URL instead:
+
+```
+rest:funds:/funds/fund-green-bond
+```
+
+so a system that updates that fund invalidates it with `DEL` — no purge service,
+no JavaScript. Config-only per new REST API (TTLs and tag rules live in
+[`grafbase.cached.toml`](grafbase.cached.toml)).
+
+```bash
+npm run cached:up          # stack on http://localhost:5065/graphql
+npm run cached:monitor     # watch the cache live
+npm run cached:test        # clean-slate build + 17 assertions + report
+```
+
+Full guide: [`Docs/EXTENSION-CACHE.md`](Docs/EXTENSION-CACHE.md). Run it *instead
+of* the stack below — they share ports 3001-3003 and 6379.
+
+---
+
 ## Caching (Redis)
 
 This project uses **Redis** as the cache backend for the Grafbase gateway. Full

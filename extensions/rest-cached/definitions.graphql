@@ -1,0 +1,107 @@
+scalar UrlTemplate
+scalar JqTemplate
+
+"""
+@restEndpoint directive enables defining named REST endpoints for the
+schema. The directive can be used multiple times on a schema to
+define different endpoints.
+
+Example:
+extend schema
+  @restEndpoint(name: "weather", baseURL: "https://api.weather.com")
+  @restEndpoint(name: "users", baseURL: "https://api.users.example.com")
+"""
+directive @restEndpoint(
+  """
+  A unique identifier for the REST endpoint
+  """
+  name: String!
+  """
+  The base URL for the REST API
+  """
+  baseURL: String!
+  "Header to send to the endpoint"
+  headers: [HTTPHeaderMapping!]
+) repeatable on SCHEMA
+
+input HTTPHeaderMapping {
+  "Name of the HTTP header"
+  name: String!
+  """
+  Static header value. It's a template that accepts a `config` parameter which
+  represents the TOML config associated with this extension. So for example:
+  `value: "Bearer: {{ config.token }}"`
+  """
+  value: String!
+}
+
+"""
+@rest directive allows you to define RESTful API integrations for GraphQL
+fields. This directive maps GraphQL fields to REST endpoints, enabling
+seamless integration between your GraphQL schema and external REST APIs.
+
+Example:
+type Query {
+  users: [User] @rest(
+    endpoint: "users",
+    http: { GET: "/users" }
+  )
+}
+"""
+directive @rest(
+  """
+  The name of the REST endpoint to use, as defined by @restEndpoint
+  """
+  endpoint: String!
+
+  """
+  The HTTP request to execute against the endpoint.
+  """
+  http: ConnectHTTP!
+
+  """
+  Specifies which fields from the GraphQL selection to include in the
+  response.
+  """
+  selection: JqTemplate
+) on FIELD_DEFINITION
+
+"Only one of the HTTP method can be used"
+input ConnectHTTP {
+  CONNECT: UrlTemplate
+  DELETE: UrlTemplate
+  GET: UrlTemplate
+  HEAD: UrlTemplate
+  OPTIONS: UrlTemplate
+  POST: UrlTemplate
+  PUT: UrlTemplate
+  PATCH: UrlTemplate
+  TRACE: UrlTemplate
+
+  """
+  Configuration for the request body, can include static values or
+  selections from the GraphQL arguments
+  """
+  body: Body = { selection: ".args.input" }
+}
+
+scalar JSON
+
+"""
+Body input type defines how to construct the request body for REST
+API calls. It allows for dynamic construction from GraphQL arguments
+or static values.
+"""
+input Body @oneOf {
+  """
+  Specifies which GraphQL arguments to include in the request body.
+  Use "*" to include all arguments, or provide specific field names.
+  """
+  selection: JqTemplate
+
+  """
+  Static JSON content to include in the request body,
+  which will be merged with any selected values.
+  """
+  static: JSON
+}

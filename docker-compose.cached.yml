@@ -1,0 +1,108 @@
+# =============================================================================
+# CACHED-EXTENSION compose — REST responses cached by the FORKED rest extension
+# (extensions/rest-cached) under readable, URL-derived keys:
+#
+#     rest:funds:/funds/fund-green-bond
+#
+# so anything that changes fund data can invalidate it with a plain DEL. No
+# sidecar, no purge service: the cache lives inside the gateway's wasm sandbox
+# and talks to Valkey over TCP.
+#
+# Different from docker-compose.gateway.yml (gateway entity caching, opaque
+# `insurance-entitycache-<blake3>` keys, TTL-only). Run one or the other —
+# they share ports 3001-3003 and 6379.
+#
+# ─── RUN ──────────────────────────────────────────────────────────────────────
+#   docker compose -f docker-compose.cached.yml up --build -d
+#   GraphQL: http://localhost:5065/graphql
+#
+# ─── SEE THE CACHE ───────────────────────────────────────────────────────────
+#   docker compose -f docker-compose.cached.yml exec valkey valkey-cli --scan
+#   docker compose -f docker-compose.cached.yml logs -f cached-gateway | grep rest-cache
+#   docker exec -it rest-demo-valkey-1 valkey-cli MONITOR
+#
+# ─── INVALIDATE ONE FUND (the whole point) ───────────────────────────────────
+#   docker compose -f docker-compose.cached.yml exec valkey \
+#     valkey-cli DEL "rest:funds:/funds/fund-green-bond"
+#
+#   …or every entry tagged Fund, in one round trip:
+#   docker compose -f docker-compose.cached.yml exec valkey valkey-cli EVAL \
+#     'local ks=redis.call("SMEMBERS",KEYS[1]); if #ks>0 then redis.call("DEL",unpack(ks)) end; redis.call("DEL",KEYS[1]); return #ks' \
+#     1 tag:Fund
+#
+# ─── OR the one-command script ───────────────────────────────────────────────
+#   scripts/test-cached-extension.sh
+# =============================================================================
+services:
+
+  accounts-rest:
+    build:
+      context: ./mock-rest-apis/accounts
+    environment:
+      SERVICE_NAME: accounts
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports:
+      - "3001:3001"
+
+  policies-rest:
+    build:
+      context: ./mock-rest-apis/policies
+    environment:
+      SERVICE_NAME: policies
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports:
+      - "3003:3003"
+
+  funds-rest:
+    build:
+      context: ./mock-rest-apis/funds
+    environment:
+      SERVICE_NAME: funds
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports:
+      - "3002:3002"
+
+  # Cache backend. Valkey by default; CACHE_IMAGE=redis:7-alpine CACHE_CLI=redis-cli
+  # switches it (the extension speaks plain RESP, so either works).
+  valkey:
+    image: ${CACHE_IMAGE:-valkey/valkey:8-alpine}
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - cached-ext-data:/data
+    healthcheck:
+      test: ["CMD", "${CACHE_CLI:-valkey-cli}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # The gateway, running the forked extension. There is no separate funds
+  # subgraph here: accounts, policies AND funds are all resolved by the
+  # extension, which is what puts every REST call behind the cache.
+  cached-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    entrypoint: ["/usr/local/bin/cached-gateway-entrypoint.sh"]
+    ports:
+      - "5065:5065"
+    depends_on:
+      accounts-rest:
+        condition: service_started
+      policies-rest:
+        condition: service_started
+      funds-rest:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+    environment:
+      # Where the EXTENSION's cache client connects (substituted into
+      # grafbase.cached.toml by the entrypoint).
+      REDIS_URL: ${REDIS_URL:-redis://valkey:6379}
+      ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+      POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+
+volumes:
+  cached-ext-data:

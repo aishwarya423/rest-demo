@@ -25,9 +25,12 @@
 
 So operation caching speeds up parse+validate+plan for repeated identical
 operations; it does **not** cache response data and does **not** cut load on the
-mock REST services. If your goal is fewer REST round-trips, cache at the REST
-layer (a Redis/proxy cache in front of the mock services) — that's independent
-of Grafbase.
+mock REST services. If your goal is fewer REST round-trips — or invalidation that
+is not just a TTL — cache at the REST layer. That is what
+[`EXTENSION-CACHE.md`](EXTENSION-CACHE.md) does: a fork of the `rest` extension
+caches each REST response in Valkey under its URL
+(`rest:funds:/funds/fund-green-bond`), so an external writer can invalidate one
+fund with a plain `DEL` (`npm run cached:up`).
 
 ## The config (root `grafbase.toml`)
 

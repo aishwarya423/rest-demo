@@ -1,0 +1,111 @@
+# =============================================================================
+# Gateway config for the FORKED, CACHING rest extension
+# (extensions/rest-cached -> grafbase_extensions/rest-cached/build).
+#
+# Topology: ONE virtual subgraph (`insurance`) in which accounts, policies AND
+# funds are all resolved by the rest extension. That matters — the extension is
+# the only place we control, so every REST call must flow through it. Fund is
+# fanned out per id by @lookup/@derive in the schema, which is what produces one
+# cache key per fund.
+#
+# Compare with grafbase.toml (the entity-caching demo): there Fund lives in a
+# separate GraphQL subgraph and the GATEWAY caches the `_entities` fetch under an
+# opaque `insurance-entitycache-<blake3>` key that nothing outside the gateway
+# can target. Here the same data is cached by the EXTENSION under
+# `rest:funds:/funds/fund-green-bond`, which any writer can DEL.
+#
+# Run:  docker compose -f docker-compose.cached.yml up --build -d   (see that file)
+# =============================================================================
+
+[extensions.rest]
+# The fork. Manifest identity is still `rest` 0.5.2, so the schema's
+# @link(url: "https://grafbase.com/extensions/rest/0.5.2") resolves unchanged.
+path = "grafbase_extensions/rest-cached/build"
+# Required: WASI HTTP for the REST calls AND TCP sockets for the Redis client.
+networking = true
+# Lets the extension's [rest-cache] HIT/MISS/SET lines reach the gateway logs.
+stderr = true
+
+# Header templates — same as grafbase.toml, plus fundsApiKey, since funds is a
+# REST endpoint again in this topology.
+[extensions.rest.config.subgraphs.insurance]
+accountsApiKey = "{{ env.ACCOUNTS_API_KEY }}"
+policiesApiKey = "{{ env.POLICIES_API_KEY }}"
+fundsApiKey = "{{ env.FUNDS_API_KEY }}"
+
+# --- the cache -------------------------------------------------------------
+# Everything the fork adds is configured here. A new REST API needs entries in
+# this table, not new code.
+[extensions.rest.config.cache]
+url = "redis://redis:6379"      # rewritten to localhost by scripts/test-cached-extension.sh
+key_prefix = "rest"             # keys look like rest:funds:/funds/fund-green-bond
+ttl = 120                       # default TTL in seconds; 0 disables the cache
+debug = true                    # log HIT/MISS/SET (needs stderr = true above)
+# tag_ttl defaults to 2x the longest endpoint TTL below (600s here), so a shared
+# tag index can never expire while an entry it points at is still cached.
+
+# Per-endpoint TTLs, keyed by @restEndpoint name.
+[extensions.rest.config.cache.endpoints.funds]
+ttl = 300                       # reference data, slow-moving
+[extensions.rest.config.cache.endpoints.policies]
+ttl = 30                        # churns fastest
+[extensions.rest.config.cache.endpoints.accounts]
+ttl = 120
+
+# --- tags ------------------------------------------------------------------
+# Optional reverse index: tag -> the cache keys carrying that entity, so one
+# purge can drop several routes at once. `{name}` captures a path segment.
+# First matching rule wins, so list the specific routes first.
+[[extensions.rest.config.cache.tags]]
+path = "/accounts/{id}/policies"
+tags = ["Account:{id}", "Policy"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/customers/{id}/accounts"
+tags = ["Customer:{id}", "Account"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/funds/{id}/policies"
+tags = ["Fund:{id}", "Policy"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/accounts/{id}"
+tags = ["Account", "Account:{id}"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/policies/{id}"
+tags = ["Policy", "Policy:{id}"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/funds/{id}"
+tags = ["Fund", "Fund:{id}"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/accounts"
+tags = ["Account"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/policies"
+tags = ["Policy"]
+
+[[extensions.rest.config.cache.tags]]
+path = "/funds"
+tags = ["Fund"]
+
+# --- the graph -------------------------------------------------------------
+# schema-gen's generated schema already has all three REST endpoints wired
+# through the extension (accounts + policies + funds, Fund fanned out by
+# @lookup/@derive), which is exactly the topology this cache needs.
+[subgraphs.insurance]
+schema_path = "schema-gen/schema.generated.graphql"
+
+[graph]
+path = "/graphql"
+introspection = true
+
+# --- gateway caching: deliberately OFF -------------------------------------
+# Entity caching would sit IN FRONT of the extension cache and keep serving its
+# own opaque, un-purgeable copy for up to its TTL after you invalidate — which
+# would make the whole exercise pointless. Operation caching only stores query
+# plans; it is left off here purely to keep `MONITOR` output to just the cache
+# entries this extension writes.
