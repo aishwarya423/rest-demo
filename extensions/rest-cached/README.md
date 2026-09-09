@@ -82,4 +82,9 @@ curl -sO https://raw.githubusercontent.com/grafbase/extensions/main/extensions/r
 …diff it against `src/lib.rs`, and re-apply the three `--- cache ---` blocks.
 `src/cache.rs` is independent of upstream and should carry over untouched.
 
-Full usage, config reference and invalidation recipes: [`Docs/EXTENSION-CACHE.md`](../../Docs/EXTENSION-CACHE.md).
+Full usage, config reference and invalidation recipes:
+[`Docs/EXTENSION-CACHE.md`](../../Docs/EXTENSION-CACHE.md).
+Design record and decisions:
+[`Docs/rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md`](../../Docs/rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md).
+Presenter runbook:
+[`Docs/rest-cache-fork/DEMO-SCRIPT.md`](../../Docs/rest-cache-fork/DEMO-SCRIPT.md).

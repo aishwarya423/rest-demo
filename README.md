@@ -51,8 +51,10 @@ npm run cached:monitor     # watch the cache live
 npm run cached:test        # clean-slate build + 17 assertions + report
 ```
 
-Full guide: [`Docs/EXTENSION-CACHE.md`](Docs/EXTENSION-CACHE.md). Run it *instead
-of* the stack below — they share ports 3001-3003 and 6379.
+Usage guide: [`Docs/EXTENSION-CACHE.md`](Docs/EXTENSION-CACHE.md) · design record:
+[`Docs/rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md`](Docs/rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md) ·
+demo runbook: [`Docs/rest-cache-fork/DEMO-SCRIPT.md`](Docs/rest-cache-fork/DEMO-SCRIPT.md).
+Run it *instead of* the stack below — they share ports 3001-3003 and 6379.
 
 ---
 

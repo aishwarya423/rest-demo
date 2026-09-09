@@ -6,6 +6,10 @@
 > Code: [`extensions/rest-cached/`](../extensions/rest-cached/) ·
 > Config: [`grafbase.cached.toml`](../grafbase.cached.toml) ·
 > Run: `npm run cached:up` · Verify: `npm run cached:test`
+>
+> **Why it was built this way:** [`rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md`](rest-cache-fork/CONFLUENCE-REST-Cache-Fork.md) ·
+> **Demoing it:** [`rest-cache-fork/DEMO-SCRIPT.md`](rest-cache-fork/DEMO-SCRIPT.md) ·
+> **Command reference:** [`rest-cache-fork/manualTestingCmds.md`](rest-cache-fork/manualTestingCmds.md)
 
 ---
 
