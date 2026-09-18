@@ -1,0 +1,90 @@
+# ===========================================================================
+# The unified query: ONE GraphQL request, three REST services behind it.
+#
+#   account            -> Accounts REST  GET /accounts/{id}
+#   account.policies   -> Policies REST  GET /accounts/{id}/policies
+#   fundHoldings.fund  -> Funds REST     GET /funds/{fundId}   (one per holding)
+#
+# variables: { "id": "acct-1001" }
+# ===========================================================================
+query AccountOverview($id: String!) {
+  account(id: $id) {
+    id
+    holderName
+    accountType
+    totalValue
+    policies {
+      id
+      policyNumber
+      productName
+      premiumMonthly
+    }
+    fundHoldings {
+      allocationPercent
+      currentValue
+      fund {
+        id
+        name
+        isin
+        assetClass
+        riskRating
+      }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# A second, narrower operation over the SAME account. Proves that invalidating
+# the entity clears every cached response that touched it, not just one key.
+#
+# variables: { "id": "acct-1001" }
+# ---------------------------------------------------------------------------
+query AccountName($id: String!) {
+  account(id: $id) {
+    id
+    holderName
+  }
+}
+
+# ---------------------------------------------------------------------------
+# A fund-only operation. Used to show that invalidating an Account does NOT
+# blow away unrelated Fund responses.
+#
+# variables: { "id": "fund-global-equity" }
+# ---------------------------------------------------------------------------
+query FundDetail($id: String!) {
+  fund(id: $id) {
+    id
+    name
+    isin
+    ongoingChargePercent
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The reverse join: a policy back to its owning account, across services.
+#
+# variables: { "id": "pol-life-3001" }
+# ---------------------------------------------------------------------------
+query PolicyWithAccount($id: String!) {
+  policy(id: $id) {
+    id
+    policyNumber
+    account {
+      id
+      holderName
+      accountType
+    }
+  }
+}
+
+# ===========================================================================
+# NOT AVAILABLE: account.funds
+#
+# GET /accounts/{accountId}/funds exists in funds/openapi.yaml but is broken in
+# the mock service (mock-rest-apis/funds/server.js:135 dereferences an
+# "accounts" array that does not exist in that process — the request crashes
+# the whole service). The account -> funds join therefore goes through
+# fundHoldings above. Fix that route and the field can be added back to
+# mesh/mesh.config.ts in four lines.
+# ===========================================================================

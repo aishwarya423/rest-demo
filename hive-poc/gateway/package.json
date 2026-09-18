@@ -1,0 +1,15 @@
+{
+  "name": "hive-poc-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "hive-gateway supergraph ../supergraph.graphql -c ./gateway.config.ts --port 4000"
+  },
+  "dependencies": {
+    "@graphql-hive/gateway": "^2.14.2",
+    "@graphql-mesh/plugin-http-cache": "^0.108.1",
+    "@graphql-mesh/transport-rest": "^0.12.2",
+    "graphql": "^16.12.0"
+  }
+}

@@ -1,0 +1,98 @@
+# ===========================================================================
+# Hive POC — 3 REST APIs -> one unified GraphQL API, cached in Valkey/Redis
+# ===========================================================================
+#   docker compose -f hive-poc/docker-compose.yml up --build -d
+#
+#   GraphQL   http://localhost:4000/graphql   (GraphiQL at http://localhost:4000)
+#   Invalidator http://localhost:8090
+#   Valkey      localhost:6379
+#
+# Flow: mesh-compose runs once and writes supergraph.graphql into a shared
+# volume; hive-gateway then serves it. The REST services are untouched.
+# ===========================================================================
+name: hive-poc
+
+services:
+  # ---------------------------------------------------------------- REST tier
+  # The three existing services, reused as-is from ../mock-rest-apis.
+  accounts-rest:
+    build: { context: ../mock-rest-apis/accounts }
+    environment:
+      SERVICE_NAME: accounts
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports: ["3001:3001"]
+
+  policies-rest:
+    build: { context: ../mock-rest-apis/policies }
+    environment:
+      SERVICE_NAME: policies
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports: ["3003:3003"]
+
+  funds-rest:
+    build: { context: ../mock-rest-apis/funds }
+    environment:
+      SERVICE_NAME: funds
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports: ["3002:3002"]
+
+  # --------------------------------------------------------------- cache tier
+  # Valkey is a drop-in Redis fork; swap the image for redis:7-alpine to use
+  # Redis instead. Nothing else in this file changes.
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    volumes: ["valkey-data:/data"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------- build stage
+  # One-shot: OpenAPI specs -> federated supergraph SDL. Exits when done.
+  mesh-compose:
+    build:
+      context: ..
+      dockerfile: hive-poc/mesh/Dockerfile
+    environment:
+      ACCOUNTS_URL: http://accounts-rest:3001
+      POLICIES_URL: http://policies-rest:3003
+      FUNDS_URL: http://funds-rest:3002
+    volumes: ["supergraph:/out"]
+
+  # ------------------------------------------------------------ runtime stage
+  hive-gateway:
+    build: { context: ./gateway }
+    ports: ["4000:4000"]
+    environment:
+      SUPERGRAPH_PATH: /supergraph/supergraph.graphql
+      REDIS_URL: redis://valkey:6379
+      # Flip to 1 only after the REST services emit Cache-Control headers.
+      ENABLE_HTTP_CACHE: ${ENABLE_HTTP_CACHE:-0}
+      ACCOUNTS_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+      POLICIES_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+      FUNDS_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    volumes: ["supergraph:/supergraph:ro"]
+    depends_on:
+      mesh-compose: { condition: service_completed_successfully }
+      valkey: { condition: service_healthy }
+      accounts-rest: { condition: service_started }
+      policies-rest: { condition: service_started }
+      funds-rest: { condition: service_started }
+
+  # ------------------------------------------------------- invalidation tier
+  # Talks to Valkey directly. Imports nothing from Hive — that is the point.
+  invalidator:
+    build: { context: ./invalidator }
+    ports: ["8090:8090"]
+    environment:
+      REDIS_URL: redis://valkey:6379
+      PORT: 8090
+    depends_on:
+      valkey: { condition: service_healthy }
+
+volumes:
+  valkey-data:
+  supergraph:

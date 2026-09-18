@@ -1,0 +1,9 @@
+{
+  "name": "hive-poc-invalidator",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ioredis": "^5.9.0" }
+}
