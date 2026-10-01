@@ -40,6 +40,30 @@ function fingerprintVariables(variableValues: Record<string, unknown> | null | u
     .join('_');
 }
 
+/**
+ * The readable half of the cache key.
+ *
+ * `operationName` is only populated when the CLIENT sends it in the request
+ * body. Plenty of clients (plain curl, some REST tools) send only `query` and
+ * `variables`, which would leave every key named `gql.anonymous.*` and destroy
+ * the readability we are paying for. So when it is absent we recover the name
+ * from the document text itself.
+ *
+ * This affects the human-readable label only. Entity tags and invalidation key
+ * off the document hash and the entity ids, so they work either way.
+ */
+function resolveOperationName(
+  operationName: string | null | undefined,
+  documentString: string,
+): string {
+  if (operationName) return sanitize(operationName);
+
+  // Match `query Foo(...)`, `mutation Foo {`, etc. Anonymous operations
+  // (`query { ... }` or just `{ ... }`) legitimately have no name.
+  const match = documentString.match(/\b(?:query|mutation|subscription)\s+([A-Za-z_]\w*)/);
+  return match ? sanitize(match[1]) : 'anonymous';
+}
+
 export const gatewayConfig = defineConfig({
   // The composed supergraph produced by Mesh Compose (build-time artifact).
   supergraph: process.env.SUPERGRAPH_PATH ?? '../supergraph.graphql',
@@ -83,7 +107,7 @@ export const gatewayConfig = defineConfig({
     // Readable, predictable response ids. See the header comment for why
     // colons are forbidden.
     buildResponseCacheKey: async ({ documentString, variableValues, operationName, sessionId }) => {
-      const op = sanitize(operationName ?? 'anonymous');
+      const op = resolveOperationName(operationName, documentString);
       const vars = fingerprintVariables(variableValues as Record<string, unknown>);
       // Hash of the document so two different selection sets on the same
       // operation name never collide.

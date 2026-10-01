@@ -1,5 +1,5 @@
 meta {
-  name: List Policies
+  name: Policies by account
   type: http
   seq: 6
 }
@@ -15,12 +15,15 @@ headers {
 }
 
 body:graphql {
-  query ListPolicies($accountId: ID) {
-    policies(accountId: $accountId) {
+  query PoliciesByAccount($accountId: String!) {
+    policiesByAccount(accountId: $accountId) {
       id
       policyNumber
       productName
+      policyType
       status
+      sumAssured
+      insuredPerson
     }
   }
 }
@@ -29,4 +32,12 @@ body:graphql:vars {
   {
     "accountId": "acct-1001"
   }
+}
+
+docs {
+  Policies GET /accounts/{accountId}/policies, called directly rather than
+  through Account.policies.
+
+  Also available: policiesByFund(fundId:) -> GET /funds/{fundId}/policies,
+  and policies -> GET /policies for the full list.
 }

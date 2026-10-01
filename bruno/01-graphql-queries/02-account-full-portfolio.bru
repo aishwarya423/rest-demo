@@ -1,5 +1,5 @@
 meta {
-  name: Account — Full Portfolio (federation join)
+  name: Account full portfolio (3 REST services)
   type: http
   seq: 2
 }
@@ -15,29 +15,28 @@ headers {
 }
 
 body:graphql {
-  query InsurancePortfolio($id: ID!) {
+  query AccountOverview($id: String!) {
     account(id: $id) {
       id
       holderName
       accountType
       totalValue
       policies {
+        id
         policyNumber
         productName
         status
-        linkedFunds {
-          name
-          assetClass
-          oneYearReturnPercent
-        }
+        premiumMonthly
       }
       fundHoldings {
         allocationPercent
         currentValue
         fund {
+          id
           name
+          isin
+          assetClass
           riskRating
-          sustainabilityLabel
         }
       }
     }
@@ -51,6 +50,15 @@ body:graphql:vars {
 }
 
 docs {
-  Cross-subgraph query — accounts + policies + funds all participate.
-  Best demo of federation hitting multiple subgraph caches in parallel.
+  THE demo query. One request, three REST services:
+    account       -> Accounts  GET /accounts/{id}
+    policies      -> Policies  GET /accounts/{id}/policies
+    fundHoldings  -> Funds     GET /funds/{fundId}, once per holding
+
+  This single cached response is tagged with entities from all three services:
+  one Account, two Policy and three Fund tags. That is what makes per-entity
+  invalidation possible.
+
+  There is no account.funds field. Its REST route crashes the funds mock
+  service, so the join runs through fundHoldings instead.
 }

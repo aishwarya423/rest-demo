@@ -337,6 +337,24 @@ response-cache:Fund.fund-global-equity:gql.AccountOverview.id-acct-1001.737e0759
 > silently deletes nothing. Use dots and dashes. Entity ids must be colon-free
 > too — `acct-1001` is fine.
 
+### Why the operation name is derived, not just read
+
+Hive only populates `operationName` when the **client** sends that field in the
+request body. Plain `curl` and several API tools send only `query` and
+`variables`, which would name every key `gql.anonymous.*` and throw away the
+readability we are paying for. So `resolveOperationName` falls back to parsing
+the name out of the query text:
+
+| Request | Resulting key |
+|---|---|
+| sends `operationName: "AccountById"` | `gql.AccountById.id-acct-1001.132eb200` |
+| omits it, query is `query AccountById(...)` | `gql.AccountById.id-acct-1001.132eb200` |
+| genuinely anonymous `{ account(id: "...") }` | `gql.anonymous.novars.91eacd2e` |
+
+The last row is correct: an unnamed operation has no name to recover. This
+affects the readable label only. Entity tags and invalidation key off the
+document hash and the entity ids, so they work either way.
+
 ## TTL strategy
 
 | Scope | TTL | Why |

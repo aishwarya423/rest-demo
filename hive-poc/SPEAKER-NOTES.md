@@ -337,6 +337,22 @@ gql.AccountOverview.id-acct-1001.737e0759
 | `id-acct-1001` | The variables, sorted so the same variables always produce the same key. |
 | `737e0759` | The first 8 characters of a SHA-256 hash of the query text. Different field selections get different keys. |
 
+### One subtlety about the operation name
+
+Hive only fills in `operationName` if the **client** sends that field. Plain
+`curl` often sends only `query` and `variables`. If we trusted Hive's value
+alone, those requests would all be keyed `gql.anonymous.*` and we would lose the
+readability.
+
+So `resolveOperationName` falls back to reading the name out of the query text.
+A truly unnamed query still keys as `anonymous`, which is correct.
+
+This only affects the readable label. Entity tags and invalidation rely on the
+document hash and the entity IDs, so they work either way.
+
+**Say:** "The readable name works even when the client does not send an
+operation name, because we parse it from the query."
+
 ### The colon rule
 
 **Never put a colon in the response key or an entity ID.**

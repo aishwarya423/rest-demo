@@ -1,0 +1,27 @@
+meta {
+  name: Purge — Account acct-1001
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{invalidatorUrl}}/cache/entity/Account/acct-1001
+  body: none
+  auth: none
+}
+
+docs {
+  THE invalidation demo. Deletes every cached response tagged with this
+  account, in both tag directions, so no dangling tags are left behind.
+
+  Demo flow:
+    1. Run "Account full portfolio"  -> MISS, REST called
+    2. Run it again                  -> HIT, no REST traffic
+    3. Run "Fund by ID"              -> caches an unrelated response
+    4. Run this purge                -> ~16 keys deleted, across 2 operations
+    5. List all cache keys           -> only the Fund response survives
+    6. Run "Account full portfolio"  -> MISS again, fresh data
+
+  This endpoint talks straight to Valkey. It imports nothing from Hive, which
+  is the point: your REST services can trigger it when data changes.
+}

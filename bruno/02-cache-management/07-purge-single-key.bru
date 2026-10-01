@@ -1,0 +1,26 @@
+meta {
+  name: Purge — one exact Redis key
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{invalidatorUrl}}/cache/key?key=response-cache:gql.AccountById.id-acct-1001.CHANGE_ME
+  body: none
+  auth: none
+}
+
+params:query {
+  key: response-cache:gql.AccountById.id-acct-1001.CHANGE_ME
+}
+
+docs {
+  Surgical single-key delete, for when you know the exact key.
+
+  Get a real key first from "List all cache keys" and paste its document hash
+  over CHANGE_ME. The hash is the first 8 characters of a SHA-256 of the query
+  text, so it changes whenever the selected fields change.
+
+  This proves the requirement that cache keys are predictable and individually
+  deletable, rather than opaque hashes.
+}

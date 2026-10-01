@@ -1,21 +1,19 @@
 meta {
-  name: Purge — single fund (Fund:fund-001)
+  name: Purge — Fund fund-global-equity
   type: http
   seq: 6
 }
 
-post {
-  url: {{fundsMgmt}}/purge
-  body: json
+delete {
+  url: {{invalidatorUrl}}/cache/entity/Fund/fund-global-equity
+  body: none
   auth: none
 }
 
-headers {
-  Content-Type: application/json
-}
+docs {
+  Purging one fund clears every response that embedded it: the standalone fund
+  query, the account portfolio, and the funds list.
 
-body:json {
-  {
-    "tags": ["Fund:fund-001"]
-  }
+  Use the preview endpoint first to see the spread:
+    GET {{invalidatorUrl}}/cache/entity/Fund/fund-global-equity
 }

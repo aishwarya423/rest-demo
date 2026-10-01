@@ -15,29 +15,33 @@ headers {
 }
 
 body:graphql {
-  query FundById($id: ID!) {
+  query FundDetail($id: String!) {
     fund(id: $id) {
       id
       name
+      isin
       assetClass
+      currency
       riskRating
-      sustainabilityLabel
+      ongoingChargePercent
       oneYearReturnPercent
-      linkedPolicies {
-        policyNumber
-        status
-      }
+      sustainabilityLabel
     }
   }
 }
 
 body:graphql:vars {
   {
-    "id": "fund-001"
+    "id": "fund-global-equity"
   }
 }
 
 docs {
-  Funds subgraph TTL = 300s (longest — prices update daily).
-  linkedPolicies field is resolved by the policies subgraph (cross-subgraph join).
+  Funds GET /funds/{id}.
+
+  Use this to prove invalidation is targeted. Run it, then purge
+  Account acct-1001. This response survives, because it carries only a
+  Fund tag and no Account tag.
+
+  Fund has the longest TTL (300s) since reference data rarely changes.
 }

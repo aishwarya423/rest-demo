@@ -1,94 +1,102 @@
-# REST extension example
+# rest-demo — three REST APIs as one GraphQL API
 
-This example demonstrates how to use the [REST extension](https://grafbase.com/extensions/rest) to integrate the [REST Countries API](https://restcountries.com/) declaratively with the Grafbase Gateway.
+Three existing REST services exposed through a single unified GraphQL API, with
+Redis/Valkey response caching and explicit per-entity cache invalidation.
 
-## Quickstart
+Built on **Hive Gateway**. Not Hive Router, which has no response cache today
+and cannot consume REST. The reasoning is in
+[`Docs/HIVE-EVALUATION.md`](Docs/HIVE-EVALUATION.md).
 
-- Start the Grafbase development server: `npx grafbase dev`
-- Explore the GraphQL API: `http://localhost:5000`
-
-
-https://github.com/grafbase/grafbase/tree/main/examples/rest-extension
-
-
-Useful cmds
-add this line in schema . graphql
-
-@restEndpoint(name: "countries", baseURL: "http://localhost:3004")
-
-npx grafbase dev --port 5050
-
-docker compose up --build -d
-main----
-docker compose down && docker compose up --build -d && sleep 5 && docker compose ps
-
-docker compose build --no-cache grafbase
-
-docker useful cmds
-
-docker compose down --remove-orphans && lsof -iTCP:3001 -sTCP:LISTEN | grep -v COMMAND | awk '{print $2}' | xargs kill -9 2>/dev/null || true && sleep 2 && docker compose up --build -d && sleep 5 && docker compose ps
-
----
-
-## Caching (Redis)
-
-This project uses **Redis** as the cache backend for the Grafbase gateway. Full
-setup, testing, and verification steps live in [`Docs/CACHING.md`](Docs/CACHING.md);
-this is the quick reference.
-
-### What's configured
-
-- **Redis service** — `redis:7-alpine` in [`docker-compose.yml`](docker-compose.yml),
-  `restart: unless-stopped`, health-checked, with a `redis-data` volume so cached
-  keys **persist across `docker compose down/up`**.
-- **Gateway cache config** — in the root [`grafbase.toml`](grafbase.toml):
-  - `[operation_caching]` (Redis-backed) — caches the **query plan** per unique
-    operation. **Verified working** under the production gateway.
-  - `[entity_caching]` (Redis-backed, `storage = "redis"`) — caches **subgraph
-    fetch responses**. Correctly configured but a **no-op in this topology** (see
-    below).
-
-### Env-driven Redis endpoint
-
-The Redis endpoint comes from the `REDIS_URL` env var. **Note:** the gateway
-(0.53.5) does *not* interpolate `{{ env.* }}` in the caching `redis.url` field, so
-`grafbase.toml` holds a concrete default (`redis://redis:6379`) and `REDIS_URL` is
-substituted into it at startup by our tooling:
-
-| Environment | Mechanism |
-|---|---|
-| docker (`Dockerfile.gateway`) | `docker/gateway-entrypoint.sh` substitutes `$REDIS_URL` (defaults to `redis://redis:6379`) |
-| host-side testing | the `sed` step in `Docs/CACHING.md` rewrites `redis://redis:6379` → `redis://localhost:6379` |
-
-Use a `rediss://` URL (plus a `[*.redis.tls]` table) for TLS.
-
-### Important caveats
-
-- **Caching only runs under the production gateway** (`grafbase-gateway`).
-  The default docker-compose `grafbase` service runs `grafbase dev`, which
-  **ignores all caching** — so `docker compose up` alone caches nothing. Why:
-  [`Docs/DEV-VS-GATEWAY-CACHING.md`](Docs/DEV-VS-GATEWAY-CACHING.md).
-- **Entity caching is a no-op here.** This graph is a single virtual subgraph
-  resolved by the REST WASM extension, so there is no gateway→subgraph fetch to
-  cache. Why: [`Docs/ENTITY-CACHING-WHY-NOOP.md`](Docs/ENTITY-CACHING-WHY-NOOP.md).
-
-### Verify it the Docker way (recommended)
-
-Use the production-gateway compose file — this runs `grafbase-gateway` (not
-`grafbase dev`), so caching actually engages. **Verified end-to-end.**
-
-```bash
-docker compose -f docker-compose.gateway.yml up --build -d
-# GraphQL: http://localhost:5060/graphql
-
-# fire a query, then watch the operation-plan key appear in Redis
-curl -s localhost:5060/graphql -H 'content-type: application/json' \
-  -d '{"query":"{ account(id:\"acct-1001\"){ holderName } }"}'
-docker compose -f docker-compose.gateway.yml exec redis \
-  redis-cli --scan --pattern 'insurance-opcache*'
-# insurance-opcacheop.blake3.<hash>   <- one key per distinct operation
+```
+                 GraphQL client
+                       |
+                       | one query
+                       v
+              Hive Gateway :4000  <-------->  Valkey :6379
+                       |                         ^
+                       | cache miss only         | DEL keys
+          +------------+------------+            |
+          v            v            v            |
+     Accounts      Policies       Funds      Invalidator :8090
+      :3001          :3003         :3002
 ```
 
-Cache **persistence** survives restarts (verified): the key remains after
-`docker compose -f docker-compose.gateway.yml restart redis grafbase-gateway`
-thanks to the `redis-data` volume.
+## Quick start
+
+```bash
+docker compose -f hive-poc/docker-compose.yml up --build -d
+```
+
+| Service | URL |
+|---|---|
+| GraphQL API + GraphiQL | http://localhost:4000/graphql |
+| Cache invalidator | http://localhost:8090/health |
+| Valkey | `localhost:6379` |
+| Accounts / Funds / Policies REST | `:3001` / `:3002` / `:3003` |
+
+Then run the scripted walkthrough of cache miss, hit, invalidation and refetch:
+
+```bash
+cd hive-poc/demo && ./demo.sh
+```
+
+The first build takes a few minutes. The `mesh-compose` container runs once,
+writes the supergraph and exits with code 0. That exit is expected.
+
+## Try it
+
+```bash
+curl -s localhost:4000/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\") { holderName policies { policyNumber } fundHoldings { fund { name } } } }"}'
+```
+
+One request, three REST services. Run it twice and the second call is served
+from Valkey with no REST traffic at all.
+
+## Layout
+
+| Path | What it is |
+|---|---|
+| [`hive-poc/`](hive-poc/README.md) | The POC: Mesh composition, gateway config, invalidator, Docker Compose, demo script |
+| [`hive-poc/SPEAKER-NOTES.md`](hive-poc/SPEAKER-NOTES.md) | Developer-focused walkthrough and demo script |
+| [`Docs/HIVE-EVALUATION.md`](Docs/HIVE-EVALUATION.md) | Why Hive Gateway, what is native vs custom, risks, Hive vs Grafbase |
+| [`mock-rest-apis/`](mock-rest-apis/) | The three REST services and their OpenAPI contracts |
+| [`bruno/`](bruno/README.md) | Bruno collection for the GraphQL API and the invalidator |
+
+## How it fits together
+
+**Build time.** Mesh reads the three `openapi.yaml` files and composes one
+federated `supergraph.graphql`. Federation entity keys are derived
+automatically from the `GET /<resource>/{id}` routes.
+
+**Runtime.** Hive Gateway serves that supergraph, calls the REST services on a
+cache miss, and caches each response in Valkey under a readable key such as
+`response-cache:gql.AccountOverview.id-acct-1001.737e0759`.
+
+**Invalidation.** Every cached response is tagged with the entities it contains.
+Deleting one entity removes exactly the responses that embedded it:
+
+```bash
+curl -s -X DELETE localhost:8090/cache/entity/Account/acct-1001
+```
+
+The REST services were not modified. Only their OpenAPI files are read.
+
+## Known issue
+
+`GET /accounts/{accountId}/funds` crashes the funds service. It dereferences an
+`accounts` array that does not exist in that process, at
+[`mock-rest-apis/funds/server.js:135`](mock-rest-apis/funds/server.js#L135). The
+route is declared in `funds/openapi.yaml`, so generated clients will call it.
+The account-to-funds join uses `fundHoldings` instead until it is fixed.
+
+## Running without Docker
+
+```bash
+npm install
+npm run mock-apis          # accounts :3001, funds :3002, policies :3003
+npm run supergraph:build   # compose the supergraph against localhost
+```
+
+Then start the gateway and invalidator as described in
+[`hive-poc/README.md`](hive-poc/README.md#path-b--run-on-the-host-fastest-iteration).

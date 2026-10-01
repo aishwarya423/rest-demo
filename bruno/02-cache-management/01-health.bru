@@ -1,0 +1,16 @@
+meta {
+  name: Invalidator health
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{invalidatorUrl}}/health
+  body: none
+  auth: none
+}
+
+docs {
+  Confirms the invalidator is up and connected to Valkey.
+  Expected: { "ok": true, "redis": "ready" }
+}

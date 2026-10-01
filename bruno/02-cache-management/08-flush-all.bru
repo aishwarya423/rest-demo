@@ -1,0 +1,18 @@
+meta {
+  name: Flush all cache keys
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{invalidatorUrl}}/cache/flush
+  body: none
+  auth: none
+}
+
+docs {
+  Clears every gateway cache key. Use it to start a demo from a known state.
+
+  Demo convenience only. It is a blunt instrument, and the invalidator has no
+  authentication, so this endpoint must not be exposed outside local use.
+}

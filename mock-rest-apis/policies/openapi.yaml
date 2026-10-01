@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: >-
     Mock policies service. Source of truth for the Policy model consumed by the
-    GraphQL schema generator (schema-gen/generate.mjs).
+    Hive supergraph composed by hive-poc/mesh/mesh.config.ts.
 
 paths:
   /policies:

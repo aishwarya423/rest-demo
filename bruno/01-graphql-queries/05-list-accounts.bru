@@ -1,5 +1,5 @@
 meta {
-  name: List Accounts
+  name: List accounts
   type: http
   seq: 5
 }
@@ -15,9 +15,10 @@ headers {
 }
 
 body:graphql {
-  query ListAccounts($customerId: ID) {
-    accounts(customerId: $customerId) {
+  query ListAccounts {
+    accounts {
       id
+      customerId
       holderName
       accountType
       totalValue
@@ -25,13 +26,12 @@ body:graphql {
   }
 }
 
-body:graphql:vars {
-  {
-    "customerId": null
-  }
-}
-
 docs {
-  Set customerId to filter (e.g. "cust-1") or leave null for all accounts.
-  Cache key changes with the variable — null → /accounts, set → /customers/<id>/accounts.
+  Accounts GET /accounts.
+
+  This field takes no arguments. To filter by customer, use the separate
+  accountsByCustomer query, which maps to GET /customers/{customerId}/accounts.
+
+  Caution for the demo: this response is tagged with EVERY account it returns,
+  so purging any one account invalidates it.
 }

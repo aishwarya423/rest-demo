@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "Grafbase POC — Valkey Cache Tests",
+  "name": "Hive POC — GraphQL + Valkey Cache",
   "type": "collection",
   "ignore": [
     "node_modules",

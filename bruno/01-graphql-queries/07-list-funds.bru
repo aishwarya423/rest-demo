@@ -1,5 +1,5 @@
 meta {
-  name: List Funds
+  name: List funds
   type: http
   seq: 7
 }
@@ -19,13 +19,19 @@ body:graphql {
     funds {
       id
       name
+      isin
       assetClass
       riskRating
-      oneYearReturnPercent
+      ongoingChargePercent
+      sustainabilityLabel
     }
   }
 }
 
-body:graphql:vars {
-  {}
+docs {
+  Funds GET /funds.
+
+  Note fundsByAccount(accountId:) exists in the schema but its REST route
+  (GET /accounts/{accountId}/funds) crashes the funds mock service. Do not call
+  it until mock-rest-apis/funds/server.js:135 is fixed.
 }

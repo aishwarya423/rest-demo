@@ -111,10 +111,21 @@ Router unchanged — only the caching would be lost.
 
 ## 2. What Hive Gateway caches, precisely
 
-This is where the Grafbase experience in this repo transfers directly. The
-lesson from [`ENTITY-CACHING-WHY-NOOP.md`](./ENTITY-CACHING-WHY-NOOP.md) — that
-a cache which stores *subgraph fetches* is useless when there are no subgraph
-fetches — **does not repeat here**, because Hive's cache stores something else.
+This is where the earlier Grafbase experience transfers directly, so the finding
+is recorded here rather than left in the deleted Grafbase docs.
+
+**What we established on Grafbase.** Its entity cache stores *gateway-to-subgraph
+fetch responses*. That graph was a single virtual subgraph whose every field —
+including the `Fund` key lookup fanned out by `@derive` — was resolved by the
+in-process REST WASM extension, never by an HTTP fetch across a subgraph
+boundary. With no subgraph fetch to intercept, entity caching wrote **nothing**
+to Redis even under the production gateway. This was confirmed empirically: the
+gateway started cleanly against a dead Redis port and served normally, because
+it never opened a connection for entity caching at all. The configuration was
+correct; the topology gave it no work to do.
+
+**That failure does not repeat here**, because Hive's cache stores something
+else entirely.
 
 | Layer | What it stores | Cuts REST calls? | Redis? | Keys predictable? |
 |---|---|---|---|---|

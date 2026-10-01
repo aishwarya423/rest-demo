@@ -66,8 +66,8 @@ const funds = [
 ];
 
 // Swagger contract lives in the co-located openapi.yaml file — the single
-// source of truth for this service's model (also consumed by the GraphQL
-// schema generator in schema-gen/). Served verbatim at /openapi.yaml so the
+// source of truth for this service's model (also consumed by
+// Mesh Compose in hive-poc/mesh/). Served verbatim at /openapi.yaml so the
 // server needs no YAML parser.
 const openApiYaml = require("fs").readFileSync(require("path").join(__dirname, "openapi.yaml"), "utf8");
 

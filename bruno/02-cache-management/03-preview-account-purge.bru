@@ -1,0 +1,23 @@
+meta {
+  name: Preview purge — Account acct-1001
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{invalidatorUrl}}/cache/entity/Account/acct-1001
+  body: none
+  auth: none
+}
+
+docs {
+  DRY RUN. Shows exactly which keys a purge would delete, and changes nothing.
+
+  Response includes:
+    tag          the entity tag, e.g. Account.acct-1001
+    responseIds  every cached operation containing that account
+    keys         every Redis key that would be deleted
+
+  Run this before the DELETE in a demo. It makes the blast radius visible
+  before anything is destroyed.
+}

@@ -1,5 +1,5 @@
 meta {
-  name: Policy by ID
+  name: Policy by ID (reverse join to Account)
   type: http
   seq: 3
 }
@@ -15,15 +15,18 @@ headers {
 }
 
 body:graphql {
-  query PolicyById($id: ID!) {
+  query PolicyWithAccount($id: String!) {
     policy(id: $id) {
       id
       policyNumber
       productName
       status
+      premiumMonthly
+      fundIds
       account {
         id
         holderName
+        accountType
       }
     }
   }
@@ -31,11 +34,16 @@ body:graphql {
 
 body:graphql:vars {
   {
-    "id": "pol-9001"
+    "id": "pol-life-3001"
   }
 }
 
 docs {
-  Policies subgraph TTL = 30s (shortest of the three).
-  Useful for TTL-expiry demo: query, wait 35s, query again → cache MISS.
+  The join in the other direction: Policies GET /policies/{id}, then
+  Accounts GET /accounts/{accountId}.
+
+  Wired by the @resolveTo on Policy.account in hive-poc/mesh/mesh.config.ts.
+
+  fundIds is the raw array from the REST payload. There is no linkedFunds field,
+  because the funds service has no batch-by-ids route to fan out to.
 }

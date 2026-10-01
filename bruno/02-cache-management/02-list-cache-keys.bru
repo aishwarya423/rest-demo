@@ -1,0 +1,28 @@
+meta {
+  name: List all cache keys
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{invalidatorUrl}}/cache/keys?pattern=response-cache:*
+  body: none
+  auth: none
+}
+
+params:query {
+  pattern: response-cache:*
+}
+
+docs {
+  Every GraphQL response cache key currently in Valkey.
+
+  One cached response produces three key shapes:
+    response-cache:<responseId>                 the JSON body
+    response-cache:<Type>.<id>:<responseId>     entity  -> response  (the tag)
+    response-cache:<responseId>:<Type>.<id>     response -> entity   (reverse)
+
+  Equivalent CLI:
+    docker compose -f hive-poc/docker-compose.yml exec valkey \
+      valkey-cli --scan --pattern 'response-cache:*'
+}

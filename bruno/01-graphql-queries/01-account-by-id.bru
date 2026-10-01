@@ -15,7 +15,7 @@ headers {
 }
 
 body:graphql {
-  query AccountById($id: ID!) {
+  query AccountById($id: String!) {
     account(id: $id) {
       id
       holderName
@@ -32,11 +32,14 @@ body:graphql:vars {
 }
 
 docs {
-  Mirrors the canonical demo curl:
-  curl -X POST http://localhost:5050/graphql \
-    -H "Content-Type: application/json" \
-    -d '{"query":"{ account(id:\"acct-1001\") { holderName totalValue } }"}'
+  Single REST call behind this: Accounts GET /accounts/{id}.
 
-  First call → cache MISS; subsequent calls within TTL (120s) → cache HIT.
-  Verify cache writes with: docker exec grafbasepoc-valkey-1 valkey-cli KEYS "*"
+  Note the variable type is String!, not ID!. Mesh derives argument types from
+  the OpenAPI path parameters, which are plain strings.
+
+  First call is a cache MISS. Repeat calls inside the Account TTL (30s) are HITs
+  and make no REST calls at all.
+
+  Cache key written:
+    response-cache:gql.AccountById.id-acct-1001.<documentHash>
 }

@@ -1,21 +1,22 @@
 meta {
-  name: Purge — single policy (Policy:pol-9001)
+  name: Purge — Policy pol-life-3001
   type: http
   seq: 5
 }
 
-post {
-  url: {{policiesMgmt}}/purge
-  body: json
+delete {
+  url: {{invalidatorUrl}}/cache/entity/Policy/pol-life-3001
+  body: none
   auth: none
 }
 
-headers {
-  Content-Type: application/json
-}
+docs {
+  Same mechanism, different entity type.
 
-body:json {
-  {
-    "tags": ["Policy:pol-9001"]
-  }
+  Worth showing because this policy is embedded inside the account portfolio
+  response. Purging the policy invalidates that whole response, even though
+  the client asked for an account.
+
+  That is the main granularity trade-off: the cache unit is a complete
+  GraphQL response, not an individual field.
 }
