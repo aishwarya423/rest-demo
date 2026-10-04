@@ -1,0 +1,102 @@
+# ===========================================================================
+# Target query 1 — the unified read across all three REST services.
+#
+#   account            -> accounts subgraph  -> GET /accounts/{id}
+#   account.policies   -> policies subgraph  -> GET /accounts/{id}/policies
+#   fundHoldings.fund  -> funds subgraph     -> GET /funds/{id}  (entity fetch)
+#
+# variables: { "id": "acct-1001" }
+# ===========================================================================
+query AccountOverview($id: String!) {
+  account(id: $id) {
+    holderName
+    policies {
+      policyNumber
+    }
+    fundHoldings {
+      fund {
+        name
+      }
+    }
+  }
+}
+
+# ===========================================================================
+# Target query 2 — the deep portfolio. Four subgraph hops in one request.
+#
+# Note `policies { linkedFunds { ... } }`. This field was NOT POSSIBLE in the
+# Hive Gateway POC: Mesh had no batch-by-ids route to fan out to. With real
+# federation subgraphs the policies subgraph just returns Fund references and
+# the router resolves them against the funds subgraph, batched.
+#
+# variables: none (ids inline)
+# ===========================================================================
+query InsurancePortfolio {
+  account(id: "acct-1001") {
+    id
+    holderName
+    accountType
+    totalValue
+    policies {
+      policyNumber
+      productName
+      status
+      linkedFunds {
+        name
+        assetClass
+        oneYearReturnPercent
+      }
+    }
+    fundHoldings {
+      allocationPercent
+      currentValue
+      fund {
+        name
+        riskRating
+        sustainabilityLabel
+      }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# A second, narrower operation over the same account. Proves that purging the
+# Account entity clears every cached response that touched it, not just one.
+# ---------------------------------------------------------------------------
+query AccountName($id: String!) {
+  account(id: $id) {
+    id
+    holderName
+  }
+}
+
+# ---------------------------------------------------------------------------
+# A fund-only operation, used to show that purging an Account leaves unrelated
+# Fund responses alone.
+#
+# variables: { "id": "fund-global-equity" }
+# ---------------------------------------------------------------------------
+query FundDetail($id: String!) {
+  fund(id: $id) {
+    id
+    name
+    isin
+    ongoingChargePercent
+  }
+}
+
+# ---------------------------------------------------------------------------
+# The reverse join: policy back to its owning account, across subgraphs.
+#
+# variables: { "id": "pol-life-3001" }
+# ---------------------------------------------------------------------------
+query PolicyWithAccount($id: String!) {
+  policy(id: $id) {
+    policyNumber
+    account {
+      id
+      holderName
+      accountType
+    }
+  }
+}

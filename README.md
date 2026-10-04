@@ -3,9 +3,21 @@
 Three existing REST services exposed through a single unified GraphQL API, with
 Redis/Valkey response caching and explicit per-entity cache invalidation.
 
-Built on **Hive Gateway**. Not Hive Router, which has no response cache today
-and cannot consume REST. The reasoning is in
-[`Docs/HIVE-EVALUATION.md`](Docs/HIVE-EVALUATION.md).
+**Two working POCs, same requirement, different engines.** Both run locally and
+both are verified end to end.
+
+| POC | Engine | Shape | Services |
+|---|---|---|---|
+| [`hive-poc/`](hive-poc/README.md) | **Hive Gateway** (Node) | Mesh reads the OpenAPI specs at build time; the gateway calls REST directly and caches whole responses | 1 |
+| [`hive-router-poc/`](hive-router-poc/README.md) | **Hive Router** (Rust) | Three real federation subgraphs wrap the REST APIs and cache their own responses | 4 |
+
+Hive Router cannot call REST and has no response cache, so that POC puts the
+cache in the subgraphs. That turns out to give better cache mechanics at the
+cost of three more services. Full comparison:
+[Hive Router vs Hive Gateway](hive-router-poc/README.md#hive-router-vs-hive-gateway).
+Why Hive over Grafbase at all: [`Docs/HIVE-EVALUATION.md`](Docs/HIVE-EVALUATION.md).
+
+> The two stacks share ports 4000, 6379 and 8090. Run one at a time.
 
 ```
                  GraphQL client
@@ -25,6 +37,12 @@ and cannot consume REST. The reasoning is in
 
 ```bash
 docker compose -f hive-poc/docker-compose.yml up --build -d
+```
+
+Or the Router POC instead (not both at once):
+
+```bash
+docker compose -f hive-router-poc/docker-compose.yml up --build -d
 ```
 
 | Service | URL |
@@ -57,11 +75,12 @@ from Valkey with no REST traffic at all.
 
 | Path | What it is |
 |---|---|
-| [`hive-poc/`](hive-poc/README.md) | The POC: Mesh composition, gateway config, invalidator, Docker Compose, demo script |
+| [`hive-poc/`](hive-poc/README.md) | Gateway POC: Mesh composition, gateway config, invalidator, Compose, demo |
 | [`hive-poc/SPEAKER-NOTES.md`](hive-poc/SPEAKER-NOTES.md) | Developer-focused walkthrough and demo script |
+| [`hive-router-poc/`](hive-router-poc/README.md) | Router POC: 3 Yoga federation subgraphs, subgraph-level cache, invalidator |
 | [`Docs/HIVE-EVALUATION.md`](Docs/HIVE-EVALUATION.md) | Why Hive Gateway, what is native vs custom, risks, Hive vs Grafbase |
 | [`mock-rest-apis/`](mock-rest-apis/) | The three REST services and their OpenAPI contracts |
-| [`bruno/`](bruno/README.md) | Bruno collection for the GraphQL API and the invalidator |
+| [`bruno/`](bruno/README.md) | Bruno collection, pointed at the Gateway POC on :4000 |
 
 ## How it fits together
 

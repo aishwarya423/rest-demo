@@ -1,0 +1,70 @@
+# ===========================================================================
+# HIVE ROUTER CONFIGURATION
+# ===========================================================================
+# Verified against hive-router 0.2.x. The notable thing about this file is what
+# is NOT in it: there is no response cache, and no Redis anywhere.
+#
+# Hive Router DOES have a `cache` key (see below), but it caches parsing,
+# validation, normalization and query plans — all in memory, per process. It
+# never stores response data and never removes a single upstream call. It is the
+# same category of cache as Grafbase's operation_caching, which this repo
+# already proved does not reduce REST load.
+#
+# Response caching for the router is still an open RFC:
+#   https://github.com/graphql-hive/router/issues/312
+#
+# That is why the response cache in this POC lives inside the subgraphs, and
+# invalidation lives in a separate service. Neither is the router's job today.
+# ===========================================================================
+
+supergraph:
+  source: file
+  path: /supergraph/supergraph.graphql
+
+http:
+  host: 0.0.0.0
+  port: 4000
+  graphql_endpoint: /graphql
+
+# Allow introspection so the POC is explorable in a browser.
+introspection: true
+
+# --------------------------------------------------------------------------
+# IN-MEMORY caches only. No external store is supported.
+# These make repeat planning cheap; they do not make repeat DATA cheap.
+# --------------------------------------------------------------------------
+cache:
+  router:
+    parsing:
+      max_entries: 1000
+      time_to_live: 30m
+      time_to_idle: 5m
+  supergraph:
+    validation:
+      max_entries: 1000
+      time_to_idle: 5m
+    normalization:
+      max_entries: 1000
+      time_to_idle: 5m
+    query_plans:
+      max_entries: 1000
+      time_to_idle: 5m
+
+# Forward the request id so a query can be traced across router and subgraphs.
+headers:
+  all:
+    request:
+      - propagate:
+          named: x-request-id
+
+traffic_shaping:
+  all:
+    request_timeout: 10s
+    # Pass the client's operation name through to the subgraphs. Without this
+    # the router sends anonymous operations, and every subgraph cache key for a
+    # root fetch would read `anonymous` instead of the real operation name.
+    # Costs nothing and makes the Redis keyspace legible.
+    forward_operation_name: true
+
+log:
+  level: info

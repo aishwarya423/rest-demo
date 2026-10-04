@@ -1,0 +1,53 @@
+Build a POC using HIVE ROUTER in a new sub folder beside hive-poc folder (the Rust router, crate `hive-router`) that exposes
+3 existing REST APIs as one federated GraphQL API, with Redis/Valkey caching and
+per-entity cache invalidation. Must run locally via Docker Compose.
+
+The 3 REST APIs already exist and must NOT be modified. Only their openapi.yaml
+files may be read. Routes: GET /accounts, /accounts/{id}, /policies/{id},
+/accounts/{id}/policies, /funds/{id}, /funds. They need header X-Api-Key.
+
+Target query:
+  query { account(id:"acct-1001") { holderName policies { policyNumber }
+          fundHoldings { fund { name } } } }
+
+and query InsurancePortfolio { account(id: "acct-1001") { id holderName accountType totalValue policies { policyNumber productName status linkedFunds { name assetClass oneYearReturnPercent } } fundHoldings { allocationPercent currentValue fund { name riskRating sustainabilityLabel } } } }
+
+
+VERIFIED CONSTRAINTS. Confirm these yourself against current docs/source before
+designing, and tell me if any has changed:
+1. Hive Router consumes federated GraphQL subgraphs over HTTP only. It cannot
+   call REST. A GraphQL Mesh supergraph using @httpOperation/@resolveTo will NOT
+   run on it, because only Hive Gateway executes those directives.
+2. Hive Router has NO caching of any kind. Its config has no cache key.
+   Response caching is open RFC graphql-hive/router#312. `storages` is S3 only.
+3. Router extension points: Rust plugins (only on_http_request and
+   on_graphql_params can short-circuit a request) and a language-agnostic
+   coprocessor with router/graphql request+response stages.
+
+So: build 3 real GraphQL subgraph servers (GraphQL Yoga), one per REST API, each
+federation-enabled with @key(fields:"id") and a reference resolver. Add the
+cross-service joins. Compose the supergraph and serve it with Hive Router.
+
+  A. Cache inside each subgraph using @graphql-yoga/plugin-response-cache with
+     @envelop/response-cache-redis. Note this one uses real Redis SETs
+     (SADD/SMEMBERS) for tags, so colons in keys are fine and invalidation is
+     O(tag size), unlike Hive Gateway's SCAN-based approach.
+Also try `hive-gateway supergraph --hive-router-runtime`, which runs Router's
+query planner inside Gateway, and say whether that is a better fit.
+
+Caching requirements:
+- Redis or Valkey backend.
+- Cache keys I choose, readable and predictable, documented.
+- Tag each cached entry with the entities it contains (Account, Policy, Fund).
+- Invalidate everything for one entity, e.g. Account acct-1001, from OUTSIDE the
+  router, via a small standalone service that talks only to Redis.
+- Explicit single-key delete, and per-type TTL.
+
+Deliver: Docker Compose, folder structure, subgraph code, router config, cache
+key design, invalidation service, demo script showing miss then hit then purge
+then miss, and redis-cli verification steps.
+
+Run it and verify end to end. Report measured miss vs hit latency and actual
+Redis keys. Do not claim anything you have not executed. State clearly what is
+native to Hive Router versus what you had to build, and compare the result to a
+Hive Gateway equivalent on effort, performance and operational overhead.
