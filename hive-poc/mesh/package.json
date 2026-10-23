@@ -1,0 +1,14 @@
+{
+  "name": "hive-poc-mesh",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compose": "mesh-compose -o ../supergraph.graphql"
+  },
+  "dependencies": {
+    "@graphql-mesh/compose-cli": "^1.8.2",
+    "@omnigraph/openapi": "^0.112.4",
+    "graphql": "^16.12.0"
+  }
+}

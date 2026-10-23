@@ -1,0 +1,15 @@
+
+SPIKE: Hive Capability Analysis and Recommendation
+
+
+Description
+Investigate Hive Gateway, Hive Router and Hive Registry capabilities and determine whether Hive can support the long-term GraphQL federation architecture currently implemented through Grafbase.
+The spike should validate Federation 2.0 compatibility, schema governance capabilities, licensing requirements and recommended production deployment patterns.
+Acceptance Criteria 
+
+	•  Document Hive Gateway capabilities
+	•  Document Hive Router capabilities
+	•  Confirm or reject Federation 2 support
+	•  Identify Schema Registry integration path
+	•  Complete enterprise capability assessment
+	•  Produce recommendation

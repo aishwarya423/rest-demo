@@ -1,0 +1,99 @@
+# ===========================================================================
+# hive-registry-poc — registry-style supergraph delivery over S3
+# ===========================================================================
+# Verifies the ONE delivery question self-hosted Hive Console leaves open:
+# with the High-Availability CDN unavailable, can Hive Router boot from, and
+# hot-reload, a supergraph artifact held in S3-compatible object storage?
+#
+# Deliberately minimal. It does NOT stand up Hive Console (that needs
+# PostgreSQL, ClickHouse, Redis, Redpanda, MinIO and ~9 Hive services). It
+# reuses the subgraphs and the composed supergraph that hive-router-poc already
+# produces, so nothing is duplicated.
+#
+# On the choice of S3 server: Hive Router's storages docs give MinIO and
+# LocalStack as examples, but neither is freely pullable any more — MinIO's
+# images 401 on both Docker Hub and quay.io, and LocalStack's community S3
+# image was discontinued in its 2026.03 release (Pro only now). Adobe S3Mock is
+# used instead purely to keep this reproducible without a licence. The router
+# config is unchanged for MinIO or real S3 — only `endpoint` differs.
+#
+# PREREQUISITE — hive-router-poc must be running (it owns the subgraphs and
+# composes the supergraph this stack publishes):
+#   docker compose -f hive-router-poc/docker-compose.yml up -d
+#
+# THEN:
+#   docker compose -f hive-registry-poc/docker-compose.yml up -d
+#   GraphQL: http://localhost:4100/graphql
+#
+# See README.md for the full test procedure and recorded results.
+# ===========================================================================
+name: hive-registry-poc
+
+services:
+  # ------------------------------------------------------------ artifact store
+  # Stands in for the self-hosted Hive Console artifact bucket.
+  s3:
+    image: adobe/s3mock:latest
+    ports:
+      - "9090:9090"
+    # No healthcheck: the image is a bare JRE with no shell utilities to probe
+    # with. The publisher below waits for readiness itself.
+
+  # ------------------------------------------------- publish the artifact once
+  # Stands in for `hive schema:publish` followed by Console-side composition:
+  # takes the supergraph hive-router-poc already composed and writes it to the
+  # location the router reads.
+  publish-artifact:
+    image: amazon/aws-cli:latest
+    depends_on:
+      s3: { condition: service_started }
+    volumes:
+      - router-poc-supergraph:/artifacts:ro
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-test}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        S3="aws --endpoint-url http://s3:9090"
+        echo "waiting for the artifact store..."
+        i=0; until $$S3 s3 ls >/dev/null 2>&1; do
+          i=$$((i+1)); [ $$i -gt 30 ] && { echo "s3 never became ready"; exit 1; }
+          sleep 2
+        done
+        $$S3 s3 mb s3://router-artifacts 2>/dev/null || echo "bucket already exists"
+        $$S3 s3 cp /artifacts/supergraph.graphql s3://router-artifacts/supergraph/current.graphql
+        echo "--- published artifact ---"
+        $$S3 s3 ls --recursive s3://router-artifacts
+
+  # ------------------------------------------------------------------- router
+  # Same image as hive-router-poc, but sourcing its supergraph from S3 instead
+  # of a mounted file. Port 4100 so both routers can run side by side.
+  hive-router-registry:
+    image: ghcr.io/graphql-hive/router:latest
+    ports:
+      - "4100:4000"
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-test}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-test}
+    volumes:
+      - ./router/router.config.yaml:/app/router.config.yaml:ro
+    command: ["--config", "/app/router.config.yaml"]
+    depends_on:
+      publish-artifact: { condition: service_completed_successfully }
+
+volumes:
+  # The supergraph hive-router-poc composed. External so this stack reads it
+  # rather than recomposing — no duplicated composition step.
+  router-poc-supergraph:
+    external: true
+    name: hive-router-poc_supergraph
+
+networks:
+  # Join hive-router-poc's network so accounts-subgraph:4001,
+  # policies-subgraph:4002 and funds-subgraph:4003 resolve.
+  default:
+    external: true
+    name: hive-router-poc_default

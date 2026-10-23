@@ -1,0 +1,55 @@
+# ===========================================================================
+# HIVE ROUTER — supergraph loaded from S3-compatible object storage
+# ===========================================================================
+# This is the SELF-HOSTED schema-registry delivery path.
+#
+# Hive Console's managed offering serves the composed supergraph from its
+# High-Availability CDN, and the router consumes it with:
+#
+#   supergraph:
+#     source: hive
+#     endpoint: https://cdn.graphql-hive.com/artifacts/v1/<target_id>
+#     key: <cdn access token>
+#     poll_interval: 10s
+#
+# The HA CDN is NOT available in self-hosted Hive Console. Self-hosted installs
+# store schema artifacts in S3-compatible object storage (the community stack
+# uses MinIO for exactly this). So the self-hosted equivalent of the CDN path is
+# `source: storage` over S3 — which is what this file configures and what
+# hive-registry-poc exists to verify.
+#
+# Verified against hive-router 0.3.1. See ../README.md for the test and results.
+# ===========================================================================
+
+storages:
+  # Stands in for the self-hosted Hive Console artifact bucket.
+  artifacts:
+    type: s3
+    bucket: router-artifacts
+    region: us-east-1
+    endpoint: http://s3:9090
+    # Plain HTTP on the compose network. NOT for production — a real
+    # deployment terminates TLS and drops this flag.
+    allow_http: true
+    credentials:
+      type: static
+      access_key_id:
+        expression: env("S3_ACCESS_KEY_ID")
+      secret_access_key:
+        expression: env("S3_SECRET_ACCESS_KEY")
+
+supergraph:
+  source: storage
+  storage_id: artifacts
+  location: supergraph/current.graphql
+  poll_interval: 10s
+
+http:
+  host: 0.0.0.0
+  port: 4000
+  graphql_endpoint: /graphql
+
+introspection: true
+
+log:
+  level: info

@@ -1,0 +1,122 @@
+# ===========================================================================
+# Hive ROUTER MVP — 3 REST APIs -> 3 federation subgraphs -> Hive Router
+# ===========================================================================
+#   docker compose -f hive-router-mvp/docker-compose.yml up --build -d
+#
+#   GraphQL (router)  http://localhost:4000/graphql
+#   Subgraphs         :4001 accounts  :4002 policies  :4003 funds
+#   REST              :3001 accounts  :3002 funds     :3003 policies
+#
+# Uses the same ports as hive-router-poc, so do not run both at once.
+# ===========================================================================
+name: hive-router-mvp
+
+x-subgraph-base: &subgraph-base
+  build:
+    context: ./subgraphs
+
+services:
+  # ---------------------------------------------------------------- REST tier
+  # The three existing services, reused unchanged from ../mock-rest-apis.
+  accounts-rest:
+    build: { context: ../mock-rest-apis/accounts }
+    environment:
+      SERVICE_NAME: accounts
+      EXPECTED_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports: ["3001:3001"]
+
+  policies-rest:
+    build: { context: ../mock-rest-apis/policies }
+    environment:
+      SERVICE_NAME: policies
+      EXPECTED_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports: ["3003:3003"]
+
+  funds-rest:
+    build: { context: ../mock-rest-apis/funds }
+    environment:
+      SERVICE_NAME: funds
+      EXPECTED_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports: ["3002:3002"]
+
+  # ------------------------------------------------------------ subgraph tier
+  # One image, three containers. SUBGRAPH picks the schema.
+  accounts-subgraph:
+    <<: *subgraph-base
+    environment:
+      SUBGRAPH: accounts
+      PORT: 4001
+      REST_URL: http://accounts-rest:3001
+      REST_API_KEY: ${ACCOUNTS_API_KEY:-accounts-local-key}
+    ports: ["4001:4001"]
+
+  policies-subgraph:
+    <<: *subgraph-base
+    environment:
+      SUBGRAPH: policies
+      PORT: 4002
+      REST_URL: http://policies-rest:3003
+      REST_API_KEY: ${POLICIES_API_KEY:-policies-local-key}
+    ports: ["4002:4002"]
+
+  funds-subgraph:
+    <<: *subgraph-base
+    environment:
+      SUBGRAPH: funds
+      PORT: 4003
+      REST_URL: http://funds-rest:3002
+      REST_API_KEY: ${FUNDS_API_KEY:-funds-local-key}
+    ports: ["4003:4003"]
+
+  # -------------------------------------------------------------- build stage
+  # Composes the three subgraph SDLs into one federation supergraph, writes it
+  # to the shared volume and exits. "Exited (0)" is success, not a failure.
+  supergraph-compose:
+    build:
+      context: .
+      dockerfile: compose/Dockerfile
+    environment:
+      ACCOUNTS_SUBGRAPH_URL: http://accounts-subgraph:4001/graphql
+      POLICIES_SUBGRAPH_URL: http://policies-subgraph:4002/graphql
+      FUNDS_SUBGRAPH_URL: http://funds-subgraph:4003/graphql
+    volumes: ["supergraph:/out"]
+
+  # ------------------------------------------------------------- router tier
+  # Official Rust router image. See router/router.config.yaml.
+  hive-router:
+    image: ghcr.io/graphql-hive/router:latest
+    ports: ["4000:4000"]
+    volumes:
+      - ./router/router.config.yaml:/app/router.config.yaml:ro
+      - supergraph:/supergraph:ro
+    depends_on:
+      supergraph-compose: { condition: service_completed_successfully }
+      accounts-subgraph: { condition: service_started }
+      policies-subgraph: { condition: service_started }
+      funds-subgraph: { condition: service_started }
+
+  # --------------------------------------------- comparison: Gateway runtime
+  # Hive Gateway running the SAME supergraph with Router's query planner and
+  # executor (--hive-router-runtime). Lets you compare the Rust router against
+  # the Rust planner hosted in Node, on identical inputs.
+  #
+  #   docker compose -f hive-router-mvp/docker-compose.yml --profile compare up -d
+  #   -> http://localhost:4010/graphql
+  gateway-router-runtime:
+    profiles: ["compare"]
+    image: ghcr.io/graphql-hive/gateway:latest
+    command:
+      - supergraph
+      - /supergraph/supergraph.graphql
+      - --hive-router-runtime
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4010"
+    ports: ["4010:4010"]
+    volumes: ["supergraph:/supergraph:ro"]
+    depends_on:
+      supergraph-compose: { condition: service_completed_successfully }
+
+volumes:
+  supergraph:

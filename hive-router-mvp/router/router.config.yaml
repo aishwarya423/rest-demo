@@ -1,0 +1,35 @@
+# ===========================================================================
+# HIVE ROUTER CONFIGURATION
+# ===========================================================================
+# Verified against hive-router 0.3.x. Serves the supergraph composed from the
+# accounts, policies and funds subgraphs.
+# ===========================================================================
+
+supergraph:
+  source: file
+  path: /supergraph/supergraph.graphql
+
+http:
+  host: 0.0.0.0
+  port: 4000
+  graphql_endpoint: /graphql
+
+# Allow introspection so the MVP is explorable in a browser.
+introspection: true
+
+# Forward the request id so a query can be traced across router and subgraphs.
+headers:
+  all:
+    request:
+      - propagate:
+          named: x-request-id
+
+traffic_shaping:
+  all:
+    request_timeout: 10s
+    # Pass the client's operation name through to the subgraphs, so subgraph
+    # logs show the real operation instead of an anonymous one.
+    forward_operation_name: true
+
+log:
+  level: info

@@ -1,0 +1,18 @@
+SPIKE: GraphQL Gateway Evaluation - Grafbase vs Hive Router
+
+
+Key details
+
+Description
+
+Conduct comprehensive evaluation of Grafbase and Hive Router as GraphQL gateway solutions for the insurance domain.
+Compare architecture, federation capabilities, performance, operational overhead, and strategic fit before committing to long-term implementation.
+
+ 
+We're currently exploring Grafbase as our GraphQL gateway to federate insurance APIs (accounts, policies, funds). However, Hive Router (formerly The Guild's GraphQL Mesh) is a mature alternative with established adoption in enterprise environments.
+This spike will objectively compare both solutions across multiple dimensions.
+
+Scope
+	• Compare Grafbase and Hive Router for federation, REST integration and schema composition
+	• Evaluate developer experience, operational overhead and deployment model
+	• Produce comparison matrix, risks and recommendation for gateway selection

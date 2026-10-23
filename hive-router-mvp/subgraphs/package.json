@@ -1,0 +1,15 @@
+{
+  "name": "hive-router-mvp-subgraphs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "@apollo/subgraph": "^2.15.1",
+    "graphql": "^16.12.0",
+    "graphql-yoga": "^5.24.1",
+    "graphql-tag": "^2.12.6"
+  }
+}

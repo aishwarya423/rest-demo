@@ -1,5 +1,29 @@
 # GraphQL Gateway Evaluation: Grafbase vs Hive Router — Spike Outcome
 
+> ## ⚠️ SUPERSEDED — 2026-10-23
+>
+> **The recommendation on this page is no longer the spike's conclusion.** Read
+> [`CONFLUENCE-WDCS-23671-Gateway-Evaluation.md`](./CONFLUENCE-WDCS-23671-Gateway-Evaluation.md)
+> instead.
+>
+> This page remains accurate **within the question it asked** — Grafbase versus
+> Hive Router, as a two-way comparison. Two things changed afterwards:
+>
+> 1. **A third candidate was built.** Its own top follow-up item ("evaluate
+>    GraphQL Mesh") was completed. **Hive Gateway + Mesh** federates the three
+>    REST APIs with no subgraph servers *and* ships a Redis-backed response cache
+>    with explicit invalidation. It now scores highest and is the recommendation.
+> 2. **Its verdict on Hive Router's caching was too harsh.** "Hive Router cannot
+>    meet the caching requirement" is true of the router but not of the
+>    architecture: a subgraph-level response cache was built and verified, and it
+>    invalidates *more* precisely than Hive Gateway's.
+>
+> Net effect: the recommendation moves from **Grafbase** to **Hive Gateway**, and
+> Grafbase drops to third. The federation, performance, image-size and
+> schema-automation findings below were all re-verified on 2026-10-23 and stand,
+> with one correction — the responses are semantically identical but **not**
+> byte-identical (`Float` serialisation differs).
+
 **Status:** Executed 2026-08-21 (single compressed session against the
 3-week plan in [`GraphQL-Gateway-Evaluation-Spike-Plan.md`](./GraphQL-Gateway-Evaluation-Spike-Plan.md)).
 **Author:** kandagatlahemanth0319@gmail.com (spike owner) · assisted execution
