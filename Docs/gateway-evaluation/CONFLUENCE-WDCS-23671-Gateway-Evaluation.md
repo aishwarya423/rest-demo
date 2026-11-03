@@ -601,6 +601,61 @@ bottleneck in a real deployment; REST backends and network hops dominate.
 
 Raw output: [`evidence/`](./evidence/).
 
+### 9.3a Hive Gateway benchmarked, and the planner/runtime split — 2026-10-23
+
+This closes the gap flagged throughout this document: Hive Gateway, the
+recommended runtime, had never been load-tested.
+
+Three endpoints on the `hive-router-mvp` stack (no caching anywhere, matching
+§9.3's conditions), same supergraph, same three subgraphs, one variable changing
+at a time. `autocannon -c 20 -d 20`, warmed, run sequentially.
+
+| Endpoint | Host process | Query planner | B1 flat | B3 three-way join |
+|---|---|---|---|---|
+| `:4000` | Rust binary | Rust | **14,848** req/s | **7,096** req/s |
+| `:4010` | Node | Rust (`--hive-router-runtime`) | 11,916 req/s | 4,841 req/s |
+| `:4020` | Node | Node (stock) | 8,503 req/s | 2,215 req/s |
+
+Decomposing the gap:
+
+| Comparison | B1 | B3 | Isolates |
+|---|---|---|---|
+| `:4000` / `:4020` | 1.75× | **3.20×** | the headline total |
+| `:4010` / `:4020` | 1.40× | **2.19×** | the Rust planner, host held constant |
+| `:4000` / `:4010` | 1.25× | 1.47× | the Rust host, planner held constant |
+
+Two findings:
+
+1. **The planner is the larger half, and its share grows with query complexity.**
+   On the three-way join the Rust planner alone is worth 2.19×, against 1.47× for
+   the Rust host process. That is the expected direction — a join gives the
+   planner materially more work than a flat fetch — but the magnitude was not
+   knowable before this test.
+2. **`--hive-router-runtime` recovers 54% of the absolute throughput gap** in both
+   scenarios (61% and 67% in multiplicative terms) **while keeping Hive Gateway's
+   REST composition and response caching.** All three endpoints returned
+   byte-identical JSON on the join query, so the flag is not trading correctness
+   for speed.
+
+**Actionable consequence: run Hive Gateway with `--hive-router-runtime`.** The
+recommendation in §12 accepted "a slower runtime" as a trade-off; this measurement
+shows most of that cost is optional. Stock Hive Gateway at 2,215 req/s on the join
+is the number to avoid, not the number to plan around.
+
+One comparison to treat with care. §9.3 measured Grafbase at 5,221 req/s on B3
+against Hive Router's 9,932 — Grafbase at 0.53× of the router. Here stock Hive
+Gateway sits at 0.31× of the router, which would make it materially slower than
+Grafbase was, while Hive Gateway *with the flag* lands at 0.68×. Those ratios come
+from **different sessions on an unpinned machine with one run each**, so they are
+a prompt for a controlled re-run, not a conclusion.
+
+Measurement note: the router returns 218 bytes per request against both gateways'
+309, so its responses carry less framing. Requests per second compares cleanly;
+bytes per second does not.
+
+Reproduction: [`hive-router-mvp/README.md`](../../hive-router-mvp/README.md),
+`--profile compare`.
+
 ### 9.4 Deployment footprint, measured 2026-10-23
 
 | Image | Size | Contents |
@@ -803,7 +858,7 @@ the POC and the "no REST changes required" claim holds for the response cache.
 | JWT/OIDC auth, hands-on, on any gateway | All three document native JWT/JWKS. Scored from docs only |
 | OpenTelemetry / Prometheus wiring | Documented by all three, verified on none |
 | Production-realistic backend latency and failure injection | Mocks answer in well under a millisecond, which no real service does |
-| Hive Gateway performance | Never benchmarked. Its performance column in §8.2 is inferred from being the same Node runtime class as Grafbase, **not measured** |
+| ~~Hive Gateway performance~~ | ✅ **Closed 2026-10-23** — benchmarked in §9.3a. Stock Node planner is 3.20× slower than Hive Router on the join; `--hive-router-runtime` closes 54% of that gap |
 
 ### 11.2 Risks
 
@@ -877,11 +932,11 @@ second, independent mark against the REST-extension pattern.
 
 Stated plainly, because a recommendation without them is not credible:
 
-- **Performance.** Hive Gateway runs on Node, like Grafbase. We are giving up
-  Hive Router's measured ~2× throughput. Mitigating factor: cache hits
-  short-circuit before query planning, so the cached path is fast regardless —
-  but Hive Gateway's throughput was **never benchmarked**, which is an honest
-  gap, not a reassurance.
+- **Performance.** Hive Gateway runs on Node, like Grafbase. Now measured
+  (§9.3a): stock, it is 3.20× slower than Hive Router on the three-way join.
+  **Run it with `--hive-router-runtime`**, which recovers 54% of that gap at no
+  correctness cost, and cache hits short-circuit before planning anyway. The
+  residual 1.47× is the Rust host process, which Hive Gateway cannot recover.
 - **Cache granularity.** Hive Gateway's cache unit is a whole response, so any
   one tagged entity changing discards everything that response touched. The Hive
   Router topology invalidates per subgraph fetch and re-fetched 2 of 5 REST calls
