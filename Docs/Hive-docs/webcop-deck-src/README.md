@@ -1,19 +1,28 @@
 # WebCoP deck source
 
-Regenerates [`../WebCoP-Hive-GraphQL.pptx`](../WebCoP-Hive-GraphQL.pptx) — 10 slides
-on GraphQL Federation, Hive's schema lifecycle and runtime request flow.
+Regenerates [`../WebCoP-Hive-GraphQL.pptx`](../WebCoP-Hive-GraphQL.pptx) — 12 slides,
+about 20 minutes: why GraphQL beyond REST, the four adoption patterns, federation
+mechanics, the Hive ecosystem, a reference architecture, the schema lifecycle and
+the runtime request path.
 
 ```bash
 npm install pptxgenjs
 PPTX_SKILL=<path to the pptx skill dir> \
 NODE_PATH="$PWD/node_modules" \
 node build.js
+python3 preserve_space.py WebCoP-Hive-GraphQL.pptx
 python3 audit.py WebCoP-Hive-GraphQL.pptx
 python3 render_svg.py WebCoP-Hive-GraphQL.pptx preview.html
 ```
 
 `NODE_PATH` is required: `apply_theme.js` lives in the skill directory and
 resolves `jszip` through it.
+
+`preserve_space.py` is **not optional**. Every code card on these slides is
+indented SDL, CLI or query-plan text, and pptxgenjs writes those runs without
+`xml:space="preserve"`, so PowerPoint is free to strip the leading spaces and
+flatten the indentation. The script adds the attribute to the ~50 runs that need
+it. Run it after `build.js`, every time.
 
 ## Layout discipline
 
@@ -60,11 +69,23 @@ Neither is a substitute for opening the file once in PowerPoint.
 
 ## Content accuracy
 
-Terminology follows the official Hive documentation. Two points worth knowing:
+Terminology and API detail follow the official Hive documentation — CDN artifact
+paths, CLI flags, gateway and router feature sets are taken from the docs rather
+than from memory. Points worth knowing:
 
 - The three change severities are Hive's own
   `enum SeverityLevelType { SAFE, DANGEROUS, BREAKING }`, taken from the Console
   source. The public schema-checks docs page mentions only breaking and safe.
-- The high-availability CDN is a Hive Cloud feature. A self-hosted install
-  serves the same artifacts from its own endpoint, which is why slide 4 says
-  "CDN or artifact endpoint".
+- The high-availability CDN is a Hive Cloud feature (Cloudflare, with an AWS
+  mirror at `cdn-mirror.graphql-hive.com`). A self-hosted install exposes the
+  same artifact routes from its own Hive API, which is why the deck says
+  "CDN or object storage" rather than assuming the CDN.
+- Hive Router has **no response cache**. Its `cache` config key tunes in-memory
+  parse, validation and query-plan caches only — confirmed against the router
+  configuration reference, whose top-level keys are authorization, cache, cors,
+  csrf, headers, http, jwt, log, override_subgraph_urls, persisted_documents,
+  storages, override_labels, query_planner, response_extensions, supergraph,
+  traffic_shaping, telemetry, introspection, limits and subscriptions.
+- The deck contains no third-party diagrams. The reference architecture on
+  slide 6 is drawn from scratch for the Hive ecosystem; published vendor
+  blueprints were read for structure only, not copied.

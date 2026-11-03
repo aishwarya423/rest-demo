@@ -106,9 +106,9 @@ def text_svg(sh, x, y, w, h, default_color):
         for r in p.runs:
             sz = r.font.size.pt if r.font.size else 12
             col = resolve(r.font.color) or default_color
-            runs.append((r.text, sz, bool(r.font.bold), col))
+            runs.append((r.text, sz, bool(r.font.bold), col, r.font.name or ''))
         if not runs:
-            runs = [('', 12, False, default_color)]
+            runs = [('', 12, False, default_color, '')]
         lines.append((p.alignment, runs))
     if not any(t for _, rs in lines for t, *_ in rs):
         return ''
@@ -120,11 +120,14 @@ def text_svg(sh, x, y, w, h, default_color):
         txt = ''.join(r[0] for r in runs)
         col = runs[0][3]
         bold = runs[0][2]
+        # only a run-through code line counts as monospace; a prose paragraph
+        # with one inline code token must still wrap normally
+        mono = bool(runs) and all('Courier' in (r[4] or '') for r in runs)
         # split explicit newlines
         for piece in txt.split('\n'):
-            # wrap by estimated width
-            cw = maxsz * 0.5 / 72 * SCALE
-            per = max(int(w / cw), 6) if cw else 100
+            # wrap by estimated width; monospace lines are pre-wrapped by hand
+            cw = maxsz * (0.60 if mono else 0.50) / 72 * SCALE
+            per = 10000 if mono else (max(int(w / cw), 6) if cw else 100)
             cur = ''
             words = piece.split(' ')
             buf = []
@@ -137,7 +140,7 @@ def text_svg(sh, x, y, w, h, default_color):
                     cur = trial
             buf.append(cur)
             for b in buf:
-                flat.append((align, b, maxsz, bold, col))
+                flat.append((align, b, maxsz, bold, col, mono))
     lh = max((f[2] for f in flat), default=12) * 1.3 / 72 * SCALE
     total = len(flat) * lh
     anchor = tf.vertical_anchor
@@ -147,13 +150,14 @@ def text_svg(sh, x, y, w, h, default_color):
         ty = y + h - total + lh * 0.78
     else:
         ty = y + lh * 0.78
-    for align, t, sz, bold, col in flat:
+    for align, t, sz, bold, col, mono in flat:
         a = ALIGN.get(align, 'start')
         tx = x if a == 'start' else (x + w / 2 if a == 'middle' else x + w)
         out.append(
             f'<text x="{tx:.1f}" y="{ty:.1f}" font-size="{sz * SCALE / 72:.1f}" '
             f'fill="{col}" text-anchor="{a}" '
-            f'font-family="Calibri, Carlito, sans-serif" '
+            f'font-family="{"Menlo, Courier New, monospace" if mono else "Calibri, Carlito, sans-serif"}" '
+            f'xml:space="preserve" style="white-space:pre" '
             f'font-weight="{"bold" if bold else "normal"}">{html.escape(t)}</text>')
         ty += lh
     return ''.join(out)
