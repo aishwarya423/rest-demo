@@ -1,0 +1,346 @@
+
+
+
+Introduction to GraphQL Federation and How Hive Supports It
+1. Introduction
+Hi everyone!
+Today, I am going to introduce GraphQL Federation and explain how Hive supports building and managing a federated GraphQL architecture.
+Before jumping directly into federation, I want to spend a few minutes understanding some GraphQL fundamentals.
+This session is intended for both frontend and backend developers, so let's start with the basics and gradually move towards federation.
+
+2. Prerequisites – Understanding GraphQL
+What is GraphQL?
+First, let's understand what GraphQL is.
+GraphQL is a query language for APIs and a runtime for executing those queries.
+We can think of it as an alternative to REST for building APIs.
+In REST, we generally expose multiple endpoints, and the client calls those endpoints to retrieve different resources.
+In GraphQL, we generally expose a single endpoint, and the client sends a GraphQL operation describing exactly what data it needs.
+There are three important concepts:
+* Query: Used to fetch data. Similar to GET in REST in terms of purpose.
+* Mutation: Used to create, update or delete data. Similar to POST, PUT or DELETE.
+* Subscription: Used to receive real-time updates from the server.
+For example, instead of calling separate endpoints to retrieve a user and their posts, we can request both through a single GraphQL query.
+What is a GraphQL Schema?
+In REST, we commonly use Swagger or OpenAPI specifications to describe our APIs.
+Similarly, GraphQL has something called a Schema.
+A schema defines:
+* What types of data are available.
+* What fields are available on those types.
+* What operations clients can perform.
+* What arguments those operations accept.
+For example:
+type User {
+  id: ID!
+  name: String!
+  email: String!
+}
+
+type Query {
+  user(id: ID!): User
+}
+This schema tells the client that it can request a user using an ID and retrieve fields such as name and email.
+One important thing to understand is that a schema is only a contract. It describes what the API supports, but it does not fetch or serve the actual data.
+What is a GraphQL Server?
+We need a server to execute GraphQL operations and return responses.
+Similar to how we use Express, Koa or Fastify to expose REST APIs, we have GraphQL server implementations such as:
+* Apollo Server
+* GraphQL Yoga
+These servers receive GraphQL operations, execute the corresponding resolver logic and return the requested data.
+So, remember these three terms:
+* Schema – Defines what data is available.
+* Server – Handles GraphQL requests.
+* Resolvers – Contain the logic to fetch the actual data.
+Why do we need GraphQL?
+Let's take a simple frontend example.
+Imagine our React application needs to display a user's profile, their posts and the comments on those posts.
+In a REST architecture, we might need to:
+1. Call the User API.
+2. Get the user ID from the response.
+3. Call the Posts API using that user ID.
+4. Get the post IDs.
+5. Call the Comments API.
+6. Combine all the responses in the frontend.
+This can introduce multiple network calls and additional data-merging logic in the client.
+With GraphQL, the client can request nested fields in a single operation.
+For example:
+query {
+  user(id: "101") {
+    name
+    posts {
+      title
+      comments {
+        message
+      }
+    }
+  }
+}
+The GraphQL server and its resolvers handle the underlying data fetching.
+Another important benefit is that the client can select only the fields it needs.
+For example, if the UI needs only the user's name, we don't need to retrieve their email, address and other unnecessary fields.
+This helps reduce over-fetching and under-fetching.
+However, remember that GraphQL does not automatically guarantee fewer backend calls. The server still needs to implement efficient resolvers and data-fetching strategies.
+
+3. Why do we need Federation?
+Now that we understand GraphQL, let's move towards federation.
+Consider an insurance application.
+We have three domains:
+* Accounts
+* Policies
+* Funds
+Initially, we could build one GraphQL API that handles all three domains.
+For a small application, this might work perfectly fine.
+But imagine the application grows.
+Different teams are responsible for Accounts, Policies and Funds.
+If everything is maintained inside one GraphQL service:
+* The schema becomes larger.
+* Different teams need to coordinate their changes.
+* Deployments can become dependent on each other.
+* Ownership and maintenance become more difficult.
+* Changes in one domain can affect other teams.
+This is where we need a more distributed architecture.
+Instead of maintaining one large GraphQL service, we can create independent GraphQL services for each domain.
+For example:
+* Accounts GraphQL service
+* Policies GraphQL service
+* Funds GraphQL service
+Each service owns its schema, resolvers and business logic.
+These independently managed GraphQL services are called Subgraphs in a federation architecture.
+We can use GraphQL server implementations such as Apollo Server or GraphQL Yoga to build these services.
+Each team can develop, test and deploy its subgraph independently.
+But there is still one problem.
+Our frontend should not have to know about three different GraphQL endpoints.
+We want to expose one unified GraphQL API to the client.
+And this is where Federation comes into the picture.
+
+4. What is GraphQL Federation?
+GraphQL Federation is an architecture that allows us to combine multiple independently managed GraphQL services into one unified GraphQL API.
+The client sees one GraphQL endpoint, even though the actual data is distributed across multiple subgraphs.
+For our insurance example:
+* Accounts team manages Accounts subgraph.
+* Policies team manages Policies subgraph.
+* Funds team manages Funds subgraph.
+Federation allows all these subgraphs to work together as one unified graph.
+The client does not need to know which subgraph owns which field.
+It simply sends a query to the unified GraphQL endpoint.
+What is a Supergraph?
+Now we have three subgraphs.
+How do we tell the gateway which service owns which fields and how these services are connected?
+For this, we need a composed schema called the Supergraph Schema.
+The supergraph contains the combined schema definitions and federation metadata required to understand the relationships between subgraphs.
+It acts as the blueprint used by the gateway at runtime.
+What is Schema Composition?
+Schema composition is the process of combining individual subgraph schemas into one supergraph schema.
+Each subgraph publishes its GraphQL schema.
+The composition process checks whether those schemas can work together and generates a unified supergraph schema.
+For example:
+Accounts Schema
+       +
+Policies Schema
+       +
+Funds Schema
+       |
+       v
+Schema Composition
+       |
+       v
+Supergraph Schema
+Composition also validates federation-specific rules, such as entity relationships and field ownership.
+It is important to understand that composition is not the same as data fetching.
+Composition happens when schemas are built or updated. Actual data fetching happens later, when the gateway receives client requests.
+
+5. How does a Federated GraphQL request work?
+Now let's understand the runtime flow.
+Imagine our React application wants to display:
+* Account details
+* Policy details
+* Fund details
+The client sends one GraphQL query to the gateway.
+The gateway has access to the composed supergraph schema.
+It uses that schema to understand which subgraphs are responsible for the requested fields.
+The runtime process broadly involves the following steps:
+Step 1 – Client Request
+The React application sends a GraphQL query to the gateway.
+Step 2 – Parsing and Validation
+The gateway parses the incoming GraphQL operation and validates it against the schema.
+Step 3 – Query Planning
+The gateway creates a query plan.
+This plan determines which subgraphs need to be called and in what order.
+Some calls can happen in parallel, while others may depend on the results of previous calls.
+Step 4 – Subgraph Execution
+The gateway sends the required GraphQL requests to the respective subgraphs.
+For example:
+* Accounts subgraph returns account details.
+* Policies subgraph returns policy details.
+* Funds subgraph returns fund details.
+Step 5 – Response Merging
+The gateway combines the results according to the original client query.
+Step 6 – Client Response
+Finally, the gateway sends one unified GraphQL response back to the React application.
+The frontend does not need to coordinate the individual subgraph calls.
+One important point: the Router or Gateway is the runtime component responsible for processing client requests using the supergraph.
+
+6. What does Hive provide for Federation?
+Now that we understand the architecture, let's look at how Hive helps us implement and manage it.
+Hive provides multiple capabilities around schema management, federation, gateway execution, monitoring and customization.
+6.1 Hive CLI
+Hive CLI is a command-line tool that helps developers and CI/CD pipelines interact with the Hive Schema Registry.
+We can use it for three important activities:
+Schema Check
+Before publishing a schema change, we can check it against the existing schema.
+Hive identifies changes such as:
+* Breaking changes
+* Dangerous changes
+* Safe changes
+This helps us identify potential issues before they reach production.
+Schema Publish
+Once the schema is ready, we can publish the subgraph schema to Hive.
+Hive validates the schema and performs composition checks for federated projects.
+If the schemas are compatible, Hive generates a new valid supergraph artifact.
+Schema Fetch
+We can retrieve published schemas and supergraph artifacts for local development or gateway configuration.
+So, instead of manually managing schema versions, developers can integrate these activities into their development and deployment pipelines.
+6.2 Hive Console
+Hive Console provides a graphical interface for managing our GraphQL projects.
+Instead of depending entirely on CLI commands, developers and teams can use the UI to:
+* View registered projects and targets.
+* Explore published schemas.
+* View subgraph details.
+* Track schema changes and versions.
+* Review schema checks.
+* Inspect composition results.
+* Monitor GraphQL operations and usage.
+* Understand errors and performance.
+It gives teams visibility into how their GraphQL graph is evolving.
+6.3 Hive Gateway
+Hive Gateway is an open-source GraphQL gateway built using the TypeScript ecosystem.
+It acts as the runtime entry point for GraphQL client requests.
+It can:
+* Load the supergraph schema from Hive CDN or other supported sources.
+* Receive client GraphQL requests.
+* Plan and execute federated queries.
+* Communicate with subgraphs.
+* Merge responses.
+* Handle authentication and authorization.
+* Support caching, rate limiting and observability.
+Think of it as the component that actually handles the incoming GraphQL requests.
+6.4 Hive Router
+Hive Router is another runtime implementation for federated GraphQL.
+Unlike Hive Gateway, which is built around the JavaScript/TypeScript ecosystem, Hive Router is implemented in Rust.
+It is designed as a high-performance federation router.
+It reads the supergraph schema, plans incoming requests, communicates with subgraphs and constructs the final response.
+Both Gateway and Router can serve as the runtime for a federated GraphQL architecture, but they have different implementation approaches and customization models.
+6.5 GraphQL Yoga
+GraphQL Yoga is a GraphQL server implementation.
+We can use it to build individual subgraphs.
+For example, the Accounts team can implement its Accounts GraphQL API using Yoga, while the Policies team can use Apollo Server.
+The gateway does not require all subgraphs to use the same GraphQL server implementation, provided they expose compatible federation subgraph APIs.
+So, Yoga is useful at the subgraph/server level, whereas Hive Gateway and Router are used at the gateway/runtime level.
+6.6 Monitoring and Observability
+Hive provides visibility into how our GraphQL APIs are being used.
+We can understand:
+* Which operations are frequently executed.
+* Which fields are being used.
+* How long operations take.
+* Where errors are occurring.
+* How the graph is performing.
+It also integrates with OpenTelemetry and Prometheus for monitoring and tracing.
+This helps teams identify performance bottlenecks and understand the behaviour of their GraphQL services.
+
+7. Customizing Hive Router – Plugins and Coprocessors
+Apart from the standard federation execution flow, we may have additional business requirements.
+For example:
+* Custom authentication and authorization.
+* Request and response transformations.
+* Tenant-specific rules.
+* Custom logging.
+* Additional validation.
+* Response redaction.
+Hive Router provides two important customization mechanisms: Plugins and Coprocessors.
+Plugins
+Plugins execute inside the Router process.
+They are written in Rust and compiled into the router binary.
+Since they run in-process, they avoid an additional network call.
+We can use plugins when we need deeper integration with router internals or performance-sensitive custom logic.
+Coprocessors
+Coprocessors execute outside the Router process as independent HTTP services.
+During selected stages of request processing, the Router sends a request to the coprocessor service.
+The coprocessor executes our custom logic and sends a response back to the Router.
+For example, we can use a coprocessor for:
+* Custom policy validation.
+* Request modification.
+* Response redaction.
+* Tenant-specific processing.
+The main advantage is that we can implement this logic in different programming languages without modifying or rebuilding the Router.
+However, because every configured stage can introduce an HTTP network call, we should consider the latency involved.
+Plugins vs Coprocessors
+The easiest way to remember the difference:
+* Plugin = Custom logic inside the Router.
+* Coprocessor = Custom logic outside the Router, communicating over HTTP.
+
+8. Caching in GraphQL Federation
+Now let's discuss another important capability: caching.
+When we have multiple subgraphs, every client request may involve parsing, validation, query planning and communication with backend services.
+Caching helps reduce repeated work and improve response times.
+There are different levels of caching, and it is important not to confuse them.
+8.1 Parsing and Validation Cache
+When the same GraphQL operation is received repeatedly, we don't necessarily need to parse and validate it from scratch every time.
+Hive Gateway provides built-in parsing and validation caches.
+The gateway can reuse previously parsed documents and validation results.
+This reduces repeated processing overhead.
+8.2 Supergraph Runtime Caches in Hive Router
+Hive Router maintains in-memory caches for different stages of GraphQL request processing.
+These include:
+* Parsing cache – Stores parsed GraphQL documents.
+* Validation cache – Stores validation results against a supergraph.
+* Normalization cache – Stores normalized GraphQL operations.
+* Query plan cache – Stores previously generated query plans.
+For example, if the same GraphQL operation is requested repeatedly, the Router can reuse its query plan rather than generating it again.
+These caches improve the performance of the gateway runtime.
+One important distinction is that these are not business-data caches. They cache GraphQL processing artifacts.
+8.3 Response Caching
+Response caching means storing the actual GraphQL response for a particular operation.
+For example, imagine the client requests account details.
+The gateway fetches the data from the relevant subgraphs and constructs the response.
+We can store that response in a cache such as Redis.
+If another request comes in with the same operation and matching cache context, we may return the cached response instead of executing the entire federation flow again.
+We can configure:
+* Cache storage.
+* Time to live (TTL).
+* Session-based caching.
+* Field/type-based cache policies.
+* Cache invalidation.
+Hive Gateway supports response caching using in-memory or Redis-backed storage.
+8.4 Entity-Based Cache Invalidation
+Response caching introduces another challenge.
+What happens when the underlying account or policy data changes?
+We don't want to keep returning stale data.
+Entity-based invalidation helps address this.
+For example:
+1. A query fetches Account ID 101.
+2. The response is cached.
+3. A mutation updates Account ID 101.
+4. The cache invalidation mechanism identifies the affected entity.
+5. Cached responses containing that entity can be invalidated.
+Hive Gateway's response caching supports entity tracking and automatic invalidation through mutations when the required entity identity information is available.
+We can also implement custom invalidation strategies depending on our requirements.
+8.5 Operational Caching vs Response Caching
+It is useful to distinguish caching of GraphQL execution artifacts from caching actual business data.
+Area	What is cached?
+Parsing/validation	Parsed documents and validation results
+Query plan/runtime	Normalized operations and query plans
+Response caching	Final GraphQL response
+Entity invalidation	References to entities contained in cached responses, used to invalidate affected entries
+The first two reduce GraphQL processing overhead.
+Response caching reduces repeated backend execution.
+Entity tracking helps maintain cache correctness when data changes.
+Also, caching the supergraph schema itself is a separate concern: the gateway/router needs a valid schema artifact to run, and its loading and refresh lifecycle should be managed appropriately.
+
+9. Conclusion
+So, to summarize what we discussed:
+GraphQL gives clients the flexibility to request exactly the data they need.
+Federation allows us to split a large GraphQL API into independently managed subgraphs while exposing one unified API to clients.
+Schema composition combines those subgraph schemas into a supergraph.
+Hive provides tools to manage the schema lifecycle, validate changes, publish schemas, execute federated requests and monitor the graph.
+And with additional capabilities such as plugins, coprocessors and caching, we can customize and optimize the runtime according to our application requirements.
+That is the overall picture of GraphQL Federation and how Hive fits into it.
+Thank you!
