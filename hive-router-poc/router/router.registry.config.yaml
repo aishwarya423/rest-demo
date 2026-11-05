@@ -1,0 +1,88 @@
+# ===========================================================================
+# HIVE ROUTER — SUPERGRAPH FROM THE SELF-HOSTED REGISTRY
+# ===========================================================================
+# The sibling router.config.yaml loads a supergraph from a mounted file, built
+# locally by the supergraph-compose step. This one loads it from Hive instead:
+# the registry composes the supergraph from the published subgraph schemas and
+# serves it as an artifact, and the router polls that artifact.
+#
+# Both routers run at once, on the same subgraphs:
+#   :4000  file-sourced    (router.config.yaml)
+#   :4100  registry-sourced (this file)
+#
+# ---------------------------------------------------------------------------
+# WHY `source: hive` STILL WORKS WITHOUT A CDN
+# ---------------------------------------------------------------------------
+# Hive's High-Availability CDN is a Hive Cloud feature and is NOT part of a
+# self-hosted install. Self-hosted, the same artifact routes are served by the
+# `server` container when CDN_API=1 (the community Compose file sets this), at
+#
+#   <server>/artifacts/v1/<TARGET_ID>/supergraph
+#
+# The router's `source: hive` loader only needs an endpoint that speaks that
+# shape and accepts an X-Hive-CDN-Key header, so it is pointed at the server
+# container directly. No code change, no CDN, no Cloudflare account.
+#
+# HIVE_CDN_ENDPOINT must be the IN-NETWORK address, because this resolves from
+# inside the router container:
+#   correct : http://server:3001/artifacts/v1/<TARGET_ID>
+#   wrong   : http://localhost:8082/artifacts/v1/<TARGET_ID>   (your shell only)
+# ===========================================================================
+
+supergraph:
+  source: hive
+  # Both read from the environment; see .env (HIVE_CDN_ENDPOINT, HIVE_CDN_KEY).
+  endpoint:
+    expression: env("HIVE_CDN_ENDPOINT")
+  key:
+    expression: env("HIVE_CDN_KEY")
+  # For `source: hive` the documented default is 10s, but set it explicitly.
+  # The sibling `source: storage` loader defaults to polling DISABLED, and a
+  # router that loads once and never again looks healthy while serving a stale
+  # schema. Being explicit here means the two configs read the same way.
+  poll_interval: 10s
+  request_timeout: 30s
+  connect_timeout: 10s
+  retry_policy:
+    max_retries: 10
+
+http:
+  host: 0.0.0.0
+  port: 4000
+  graphql_endpoint: /graphql
+
+introspection: true
+
+# In-memory only, exactly as in router.config.yaml. Hive Router has no response
+# cache; these make repeat PLANNING cheap, not repeat DATA. The POC's response
+# caching lives in the subgraphs.
+cache:
+  router:
+    parsing:
+      max_entries: 1000
+      time_to_live: 30m
+      time_to_idle: 5m
+  supergraph:
+    validation:
+      max_entries: 1000
+      time_to_idle: 5m
+    normalization:
+      max_entries: 1000
+      time_to_idle: 5m
+    query_plans:
+      max_entries: 1000
+      time_to_idle: 5m
+
+headers:
+  all:
+    request:
+      - propagate:
+          named: x-request-id
+
+traffic_shaping:
+  all:
+    request_timeout: 10s
+    forward_operation_name: true
+
+log:
+  level: info

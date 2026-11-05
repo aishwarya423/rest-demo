@@ -1,0 +1,98 @@
+# ===========================================================================
+# SELF-HOSTED HIVE CONSOLE — overlay for hive-router-poc
+# ===========================================================================
+# Adds a complete, locally hosted Hive Console (schema registry, schema checks,
+# usage analytics, artifact endpoints) to the existing POC, and a second router
+# that takes its supergraph from that registry instead of from a local file.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.console.yml up -d
+#
+# Nothing in docker-compose.yml is modified. The original router on :4000 keeps
+# loading its supergraph from the mounted file and keeps working whether or not
+# Hive Console is running.
+#
+# ---------------------------------------------------------------------------
+# WHAT `include` DOES HERE
+# ---------------------------------------------------------------------------
+# hive-console/docker-compose.community.yml is the OFFICIAL community stack,
+# vendored byte-for-byte from the hive@15.0.1 release. It is not edited, so it
+# can be re-fetched and diffed on upgrade (see hive-console/README.md).
+#
+# `include` merges it into this project. The result is one project named
+# hive-router-poc with two networks:
+#
+#   hive-router-poc_default   the POC: REST tier, subgraphs, Valkey, routers
+#   hive                      the Hive Console stack
+#
+# Services that must speak to both join both. The included file's own
+# `name: hive` is ignored; its relative bind mounts resolve against
+# hive-console/, so all Hive state lands in hive-console/.hive/.
+# ===========================================================================
+name: hive-router-poc
+
+include:
+  - path: ./hive-console/docker-compose.community.yml
+
+services:
+  # ------------------------------------------------------------- Hive CLI
+  # One-shot tool container for publishing and checking schemas. Lives on the
+  # Hive network so it reaches the registry at server:3001 directly, which
+  # avoids depending on the published 8082 port.
+  #
+  #   docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  #     run --rm hive-cli hive/publish.sh
+  #
+  # `docker compose run` activates the profile on its own, so this never starts
+  # as part of `up`.
+  hive-cli:
+    build:
+      context: ./hive
+    profiles: ["tools"]
+    networks: ["stack"]
+    environment:
+      HIVE_TOKEN: ${HIVE_TOKEN:-}
+      HIVE_REGISTRY_ENDPOINT: ${HIVE_REGISTRY_ENDPOINT:-http://server:3001/graphql}
+      # Access tokens are organization-scoped in Hive 15, so every CLI call
+      # names its target as "<org>/<project>/<target>".
+      HIVE_TARGET: ${HIVE_TARGET:-}
+      # Where the router will reach each subgraph. Hive bakes these into the
+      # composed supergraph, so they must resolve on the router's network.
+      ACCOUNTS_SUBGRAPH_URL: http://accounts-subgraph:4001/graphql
+      POLICIES_SUBGRAPH_URL: http://policies-subgraph:4002/graphql
+      FUNDS_SUBGRAPH_URL: http://funds-subgraph:4003/graphql
+      SDL_DIR: /sdl/sdl
+    volumes:
+      # The subgraph SDL files that supergraph-compose writes.
+      - supergraph:/sdl:ro
+      # The scripts, so they can be edited without rebuilding the image.
+      - ./hive:/work/hive:ro
+
+  # ----------------------------------------------- router, registry-sourced
+  # Same image and same subgraphs as the router on :4000, but its supergraph
+  # comes from the self-hosted registry's artifact endpoint rather than from a
+  # mounted file. Opt-in, because it cannot start until a target exists in
+  # Console and HIVE_CDN_ENDPOINT / HIVE_CDN_KEY are filled into .env.
+  #
+  #   docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  #     --profile registry up -d hive-router-registry
+  hive-router-registry:
+    image: ghcr.io/graphql-hive/router:latest
+    profiles: ["registry"]
+    ports: ["4100:4000"]
+    networks:
+      - default # to reach accounts-subgraph:4001, policies:4002, funds:4003
+      - stack # to reach server:3001 for the supergraph artifact
+    environment:
+      # Plain `:-` defaults, NOT the `:?` required form. Compose interpolates
+      # every service in the file even when its profile is inactive, so a `:?`
+      # here would make `docker compose config` and `up` fail for the whole
+      # project until these are filled in. The placeholder below makes the
+      # cause obvious in the router log instead.
+      HIVE_CDN_ENDPOINT: ${HIVE_CDN_ENDPOINT:-UNSET-see-README-step-5}
+      HIVE_CDN_KEY: ${HIVE_CDN_KEY:-UNSET-see-README-step-5}
+    volumes:
+      - ./router/router.registry.config.yaml:/app/router.config.yaml:ro
+    depends_on:
+      accounts-subgraph: { condition: service_started }
+      policies-subgraph: { condition: service_started }
+      funds-subgraph: { condition: service_started }

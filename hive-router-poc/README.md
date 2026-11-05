@@ -83,7 +83,8 @@ hive-router-poc/
 │   ├── Dockerfile               one-shot build job
 │   └── package.json
 ├── router/
-│   └── router.config.yaml       Hive Router config (note what is absent)
+│   ├── router.config.yaml           Hive Router config (note what is absent)
+│   └── router.registry.config.yaml  same router, supergraph from the registry
 ├── invalidator/
 │   ├── server.js                purge API, talks only to Redis
 │   ├── Dockerfile
@@ -91,6 +92,18 @@ hive-router-poc/
 ├── demo/
 │   ├── demo.sh                  MISS -> HIT -> purge -> MISS, with REST counts
 │   └── queries.graphql          both target queries
+│
+│   --- self-hosted Hive Console (see the section below) ---
+├── docker-compose.console.yml   overlay: includes the Hive stack + glue
+├── hive-console/
+│   ├── docker-compose.community.yml  OFFICIAL file, vendored at hive@15.0.1
+│   ├── bootstrap-secrets.sh          generates .env
+│   └── .hive/                        Hive's databases (gitignored, ~180 MB)
+├── hive/
+│   ├── Dockerfile               Hive CLI (npm package, pinned)
+│   ├── publish.sh               publishes the three subgraph SDLs
+│   └── check.sh                 runs schema checks
+├── .env.example                 every variable, with descriptions
 └── supergraph.graphql           generated (gitignored)
 ```
 
@@ -121,6 +134,300 @@ Then:
 ```bash
 cd hive-router-poc/demo && ./demo.sh
 ```
+
+---
+
+# Self-hosted Hive Console
+
+Everything above runs without Hive Console: the supergraph is composed locally
+by `supergraph-compose` and mounted into the router as a file. This section adds
+the **schema registry** — a complete Hive Console running on this machine, with
+no dependency on Hive Cloud.
+
+Executed end to end on 2026-11-04 against `hive@15.0.1`, `hive-router` 0.3.12
+and Hive CLI 0.68.2. [Results](#results-self-hosted-console) are at the end.
+
+## What it adds, and what stays the same
+
+The original POC is untouched. `docker-compose.yml` is not modified, and the
+router on `:4000` keeps loading its supergraph from the mounted file whether or
+not Console is running. The overlay adds a **second** router on `:4100` that
+takes its supergraph from the registry instead.
+
+```
+  DESIGN TIME                                    RUNTIME
+  ┌───────────────────────────────┐              ┌──────────────────────────┐
+  │ hive-cli                      │              │ hive-router      :4000   │
+  │   hive schema:publish ────────┼──┐           │   source: file           │
+  │   hive schema:check           │  │           │   (original POC path)    │
+  └───────────────────────────────┘  │           └──────────────────────────┘
+                                     v
+  ┌──────────────────────────────────────────┐   ┌──────────────────────────┐
+  │ Hive Console          :8080 app          │   │ hive-router-registry     │
+  │                       :8082 GraphQL API  │   │                  :4100   │
+  │   schema  composition                    │   │   source: hive           │
+  │   policy  linting                        │   │   polls every 10s        │
+  │   usage   analytics (ClickHouse)         │   └────────────┬─────────────┘
+  │                                          │                │
+  │   server /artifacts/v1/<target>/... ─────┼────────────────┘
+  └──────────────────────────────────────────┘        supergraph artifact
+     PostgreSQL · ClickHouse · Redis · Redpanda
+     VersityGW (S3) · Caddy
+                                     both routers query the SAME subgraphs
+                                     :4001 :4002 :4003 -> REST :3001 :3003 :3002
+```
+
+**The registry is not in the request path.** It is a build-time dependency.
+If Console is down, both routers keep serving the last supergraph they loaded.
+
+## Is it really self-hosted?
+
+Yes. Every component runs locally. One capability is genuinely unavailable, and
+it is not a blocker:
+
+| Capability | Self-hosted | Note |
+|---|---|---|
+| Console UI, registry, schema history | ✅ local | |
+| Federation composition | ✅ local | `schema` service |
+| Schema checks, breaking-change detection | ✅ local | proven below |
+| Schema policy linting | ✅ local | `policy` service |
+| Usage analytics | ✅ local | ClickHouse |
+| Supergraph artifact delivery | ✅ local | `server` container, `CDN_API=1` |
+| **High-Availability CDN** | ❌ **Cloud only** | A real CDN needs Cloudflare. Self-hosted serves the same routes from `server`, which is what the router consumes. |
+| Billing integration | ❌ Cloud only | Irrelevant internally. |
+
+So the honest statement is: **the CDN is unavailable, the artifact endpoints are
+not.** `supergraph.source: hive` works unchanged against the self-hosted
+endpoint — it only needs a URL of the documented shape that accepts an
+`X-Hive-CDN-Key` header.
+
+## Architecture: 14 containers, nothing exotic
+
+`hive-console/docker-compose.community.yml` is the **official** community stack,
+vendored byte-for-byte from the `hive@15.0.1` release and never edited, so it can
+be re-fetched and diffed on upgrade:
+
+```bash
+curl -fsSL -o /tmp/next.yml \
+  "https://raw.githubusercontent.com/graphql-hive/console/hive@<VERSION>/docker/docker-compose.community.yml"
+diff hive-console/docker-compose.community.yml /tmp/next.yml
+```
+
+| Group | Services |
+|---|---|
+| Hive | `app` `server` `schema` `policy` `workflows` `usage` `usage-ingestor` `migrations` |
+| Data | `db` (PostgreSQL 16) `clickhouse` `redis` `broker` (Redpanda) |
+| Storage | `s3` (VersityGW) `s3_reverse_proxy` (Caddy) |
+
+`docker-compose.console.yml` pulls that file in with Compose `include`, so the
+whole thing is **one project**, not two. The result has two networks:
+`hive-router-poc_default` for the POC, `hive` for Console. Only `hive-cli` and
+`hive-router-registry` join both.
+
+> Hive's own docs call the bundled stack an evaluation environment, "not a
+> production-ready architecture". It is single-instance with local-disk state.
+> That judgement is theirs and it is correct — see
+> [Limitations](#limitations-self-hosted-console).
+
+## Setup
+
+### 1. Generate secrets
+
+```bash
+cd hive-router-poc && ./hive-console/bootstrap-secrets.sh
+```
+
+Writes `.env` (gitignored, `chmod 600`) with every generated secret resolved.
+A Compose `.env` cannot run `$(openssl rand ...)`, which is why this is a script
+and not a committed file. [`.env.example`](.env.example) documents every
+variable and marks each as GENERATED, FIXED or MANUAL.
+
+### 2. Start everything
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d --build
+```
+
+First run pulls roughly **5.7 GB** of images (measured: ClickHouse alone is
+970 MB, Redpanda 545 MB, and the eight Hive services about 3.5 GB between them)
+and takes a few minutes. `migrations` and `supergraph-compose` finish as
+`Exited (0)` — that is success, not a failure.
+
+| URL | Purpose |
+|---|---|
+| http://localhost:8080 | **Hive Console web app** |
+| http://localhost:8082/graphql | Hive GraphQL API (CLI target) |
+| http://localhost:8082/artifacts/v1/… | Artifact endpoints (what the router polls) |
+| http://localhost:8081 | Usage-reporting API |
+| http://localhost:9001 | S3 admin UI |
+| http://localhost:4000/graphql | Router, file-sourced (original POC) |
+| http://localhost:4100/graphql | Router, registry-sourced (added here) |
+
+### 3. Create an account, organization, project and target
+
+Open http://localhost:8080 and sign up. Email verification is disabled in this
+stack, so any address works. Then create:
+
+- an **organization** — this POC used `rest-demo`
+- a **project** of type **Federation** — `insurance-graph`
+- Hive creates `development`, `staging` and `production` targets automatically
+
+### 4. Create an access token  — MANUAL
+
+Organization → Settings → **Access Tokens** → Create new access token.
+
+Grant, under **Schema Registry**: `Check schema`, `Publish schema`,
+`Push schema`. Under **Usage Reporting**: `Report usage data`. Resource access
+`Full Access` is fine locally.
+
+> Access tokens are **organization-scoped** in Hive 15, not target-scoped. That
+> is why every CLI call also needs `--target "<org>/<project>/<target>"`, and
+> why `.env` has a `HIVE_TARGET` as well as a `HIVE_TOKEN`.
+
+Put both in `.env`:
+
+```bash
+HIVE_TARGET=rest-demo/insurance-graph/development
+HIVE_TOKEN='hvo1...'
+```
+
+### 5. Create a CDN access token  — MANUAL
+
+Target → Settings → **CDN Tokens** → Create new CDN token. Copy the key, and
+take the target id from Settings → General.
+
+```bash
+HIVE_CDN_ENDPOINT=http://server:3001/artifacts/v1/<TARGET_ID>
+HIVE_CDN_KEY='hv2...'
+```
+
+> **Use the in-network URL.** The "Connect to CDN" dialog shows
+> `http://host.docker.internal:8082/...`, and the Settings pages show
+> `http://localhost:8082/...`. Both are host-side addresses. The router runs in
+> a container on the `hive` network, so it should talk to `server:3001`
+> directly — one hop fewer, and it works on Linux, where `host.docker.internal`
+> does not exist by default. Use the `localhost` form from your own shell.
+
+### 6. Publish the subgraph schemas
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  run --rm hive-cli hive/publish.sh
+```
+
+The SDL files come from the shared volume, written by `supergraph-compose` out
+of the same modules the subgraph servers run — so the published schema and the
+running schema cannot drift. The subgraph URLs baked into the composed
+supergraph are the in-network ones (`http://accounts-subgraph:4001/graphql`),
+because the router resolves them on the Docker network.
+
+### 7. Run schema checks
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  run --rm hive-cli hive/check.sh
+```
+
+A check composes the candidate against every *other* registered subgraph and
+diffs it against the last published version. It exits non-zero on a breaking
+change, so it works as a CI gate as-is.
+
+### 8. Start the registry-sourced router
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  --profile registry up -d hive-router-registry
+
+curl -s localhost:4100/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ holderName policies{ policyNumber } } }"}'
+```
+
+It is behind a profile because it cannot start until a target exists and the two
+CDN variables are filled in.
+
+## Results — self-hosted Console
+
+Executed 2026-11-04. Every row was run, not inferred.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | 14 Hive containers + 10 POC containers start in one project | ✅ 22 running, 2 one-shots `Exited (0)` |
+| 2 | Console reachable, account/org/project/target created | ✅ `rest-demo/insurance-graph/development` |
+| 3 | Three subgraphs published via CLI to the local registry | ✅ all three, composition succeeded |
+| 4 | Console lists all three services with their URLs | ✅ |
+| 5 | `hive schema:check` on unchanged SDL | ✅ "No changes" for all three |
+| 6 | `hive schema:check` on a removed field | ✅ `Field holderName was removed from object type Account`, **exit 1** |
+| 7 | Artifact endpoint serves the composed supergraph | ✅ HTTP 200, 5,055 bytes, 50 `join__` directives |
+| 8 | Router boots with `supergraph.source: hive` against the self-hosted endpoint | ✅ "supergraph loaded successfully" |
+| 9 | Full four-hop federated query through `:4100` | ✅ correct: Anika Rao, £186,420.75, 2 policies, 2 linked funds, 3 holdings |
+| 10 | `:4100` response identical to the file-sourced `:4000` | ✅ byte-identical JSON |
+| 11 | Republish → router hot-reloads, no restart | ✅ live in **~2 s** (`poll_interval: 10s`) |
+| 12 | Republish the original → change rolls back | ✅ ~2 s |
+| 13 | Original POC unaffected throughout | ✅ `:4000` never reloaded, never restarted |
+
+### Two things worth carrying forward
+
+**The published guide's S3 variable names are wrong for hive@15.** The
+get-started page says `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`. The `hive@15`
+Compose file switched from MinIO to VersityGW and renamed them to
+`S3_ROOT_USER` / `S3_ROOT_PASSWORD`. Following the guide verbatim leaves the S3
+credentials empty, and it fails at artifact-write time rather than at startup.
+`.env.example` uses the correct names and says why.
+
+**`poll_interval` behaves differently per source.** Under `source: hive` the
+documented default is 10s. Under `source: storage` — the S3 path tested in
+[`../hive-registry-poc`](../hive-registry-poc/README.md) — polling defaults to
+**disabled**, so the router loads once and never again, with no error. Both
+configs in `router/` set it explicitly for that reason.
+
+## Limitations — self-hosted Console
+
+- **Evaluation-grade only.** Single instance of PostgreSQL, ClickHouse,
+  Redpanda, Redis and S3, all on local disk, no backups, no TLS. Hive's own docs
+  say this is not a production architecture. Production means managed data
+  services, an HTTPS reverse proxy, and overriding every public URL — changing
+  `HIVE_APP_BASE_URL` alone is not enough, because the GraphQL, subscription and
+  artifact URLs in the vendored Compose file are also hard-coded to localhost.
+- **No official Helm chart.** Still Docker Compose only. A Kubernetes deployment
+  means porting it.
+- **Resource hungry.** ~180 MB of state after a short session, and 24 containers.
+  Docker Desktop with less than 8 GB will struggle.
+- **Steps 3–5 are irreducibly manual.** Account, organization, project and both
+  tokens are created through the UI. There is no documented CLI or bootstrap API
+  for them, so a one-command clone-to-running setup is not achievable today.
+- **Usage analytics not exercised here.** The token carries `Report usage data`
+  and the `usage` / `usage-ingestor` / ClickHouse services are running, but
+  neither router was configured to report usage, so the Insights tab stays
+  empty. That is a configuration step, not a missing capability.
+- **Email is `sendmail`.** Invites and alerts will not deliver. Configure SMTP
+  or Postmark on the `workflows` service if that matters.
+
+## Troubleshooting — self-hosted Console
+
+| Symptom | Cause and fix |
+|---|---|
+| `required variable HIVE_CDN_ENDPOINT is missing` | Compose interpolates every service even for inactive profiles. The overlay uses `:-` defaults for exactly this reason; if you see this, something re-introduced a `:?`. |
+| Router logs `No supergraph available yet` then recovers | Normal startup race: it answers one request before the first poll completes. Only a problem if it never logs `supergraph loaded successfully`. |
+| Router 503s forever, endpoint reads `UNSET-see-README-step-5` | `HIVE_CDN_ENDPOINT` / `HIVE_CDN_KEY` are not in `.env`. |
+| `401` from the artifact endpoint | Wrong CDN key, or the key was issued before `CDN_AUTH_PRIVATE_KEY` changed. Regenerating secrets invalidates every issued CDN token. |
+| Router cannot reach the artifact endpoint | Using `localhost:8082` instead of `server:3001`. See step 5. |
+| CLI: `Your access token does not have permission` | Token missing `Publish`/`Check`/`Push schema`, or `--target` not passed. |
+| `migrations` exits non-zero | Inspect `docker compose logs migrations`. Usually PostgreSQL or ClickHouse credentials differing from a previous `.env`. Fix: `down -v`, delete `hive-console/.hive/`, start again. |
+| Console login fails after regenerating `.env` | `SUPERTOKENS_*` keys changed, invalidating sessions. Clear cookies; if it persists, reset `hive-console/.hive/`. |
+| Everything is very slow | 24 containers. Raise Docker Desktop's memory, or run Console without the POC. |
+
+## Tear down
+
+```bash
+# stop, keep all registry data
+docker compose -f docker-compose.yml -f docker-compose.console.yml down
+
+# stop and delete EVERYTHING, Hive's databases included
+docker compose -f docker-compose.yml -f docker-compose.console.yml down -v
+rm -rf hive-console/.hive
+```
+
+---
 
 ## Both target queries
 

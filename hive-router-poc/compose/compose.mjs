@@ -56,6 +56,17 @@ const outputPath = resolve(process.argv[2] ?? '/out/supergraph.graphql');
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, result.supergraphSdl, 'utf8');
 
+// Each subgraph's own SDL, next to the supergraph. Local composition does not
+// need these — `hive schema:publish` does, because the registry wants one SDL
+// file per subgraph and composes them itself. Writing them from the same
+// modules the servers run keeps the published schema and the running schema
+// from drifting.
+const sdlDir = resolve(dirname(outputPath), 'sdl');
+mkdirSync(sdlDir, { recursive: true });
+for (const service of services) {
+  writeFileSync(resolve(sdlDir, `${service.name}.graphql`), print(service.typeDefs), 'utf8');
+}
+
 // The public SDL is what clients see: the supergraph minus federation
 // plumbing. Writing it next door makes the generated API easy to review.
 const publicPath = outputPath.replace(/\.graphql$/, '.public.graphql');
@@ -65,4 +76,5 @@ const entityCount = (result.supergraphSdl.match(/join__type\([^)]*key:/g) ?? [])
 console.log(`\nComposition OK`);
 console.log(`  supergraph : ${outputPath} (${result.supergraphSdl.split('\n').length} lines)`);
 console.log(`  public SDL : ${publicPath}`);
+console.log(`  subgraphs  : ${sdlDir}/{${services.map((s) => s.name).join(',')}}.graphql`);
 console.log(`  entity keys: ${entityCount}`);
