@@ -56,6 +56,13 @@ docker compose -f docker-compose.yml -f docker-compose.console.yml down -v   # d
 rm -rf hive-console/.hive                                                    # drop Hive's databases
 ```
 
+If Console has been up before and `.env` was regenerated since, reconcile the
+database password before starting — idempotent, and a no-op when nothing drifted:
+
+```bash
+./hive-console/sync-db-password.sh --check
+```
+
 `supergraph-compose` and `migrations` exit 0 by design. A container listed as
 `Exited (0)` is a completed one-shot job, not a failure.
 
@@ -158,6 +165,7 @@ subgraph responses (not router responses).
 | Router serves an old schema | The host-side `supergraph.graphql` is stale — the router reads the Docker volume. Re-run `supergraph-compose` and restart the router |
 | `GET /accounts/{id}/funds` 500s | Known mock bug, not ours. Use `Account.fundHoldings.fund` |
 | Cache never hits | Check Valkey is reachable; cache errors are logged, not thrown, so a dead Redis looks like a permanent miss |
+| Console login page loads but shows "Failed to fetch" | `server` never started — almost always `migrations` failing on a Postgres password that drifted from `.env`. `./hive-console/sync-db-password.sh`. Full explanation in `references/console.md` |
 
 Reading the volume the router actually serves:
 

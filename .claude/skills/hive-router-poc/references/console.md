@@ -15,6 +15,7 @@ and Hive CLI 0.68.2.
 - [Publishing and checking](#publishing-and-checking)
 - [Connecting the router](#connecting-the-router)
 - [Gotchas](#gotchas)
+- [Credential drift: the one that cannot be rotated in place](#credential-drift-the-one-that-cannot-be-rotated-in-place)
 - [Upgrading](#upgrading)
 - [Troubleshooting](#troubleshooting)
 
@@ -182,10 +183,69 @@ registry router's variables makes `config` and `up` fail for the whole project
 until they are filled in. The overlay uses `:-` defaults with an obvious
 placeholder instead.
 
-**Regenerating secrets is destructive.** `bootstrap-secrets.sh --force` rotates
-`SUPERTOKENS_*` (invalidating all sessions) and `CDN_AUTH_PRIVATE_KEY`
-(invalidating every issued CDN token). Delete `hive-console/.hive/` too, or the
-databases will disagree with the new credentials.
+**Regenerating secrets rotates sessions and tokens.** `bootstrap-secrets.sh
+--force` rotates `SUPERTOKENS_*` (invalidating all sessions) and
+`CDN_AUTH_PRIVATE_KEY` (invalidating every issued CDN token). It now *carries
+forward* `POSTGRES_PASSWORD` and `HIVE_ENCRYPTION_SECRET` when
+`hive-console/.hive/postgres` exists, because those two are pinned by that data
+directory — see the next section. Deleting `hive-console/.hive/` is no longer
+required, and is no longer the right first move.
+
+## Credential drift: the one that cannot be rotated in place
+
+Verified 2026-11-19. This is the most misleading failure in the stack, because
+the symptom is a browser error on a healthy-looking install.
+
+**The mechanism.** The `postgres` image applies `POSTGRES_PASSWORD` only at
+first `initdb`. With `.hive/postgres` present it logs *"Database directory
+appears to contain a database; Skipping initialization"* and keeps the original
+password. Regenerate `.env` after that and `migrations`, `workflows` and `usage`
+all fail with `28P01`; `server` waits on
+`migrations: service_completed_successfully` and so never starts at all.
+
+**Why it looks like a frontend bug.** `app` (:8080) has no `depends_on`, so it
+stays healthy and serves the login page. The form posts to `server` (:8082),
+which is in state `Created`. A POST to a port with nothing listening surfaces in
+the browser as **"An error occurred / Failed to fetch"** — no database error
+anywhere in sight. First check is `docker compose ps server`: `Created`, not
+`Up`, means look at `migrations`.
+
+**Why the obvious test says the password is fine.** The data directory's
+`pg_hba.conf` is, in order:
+
+```
+local  all all              trust
+host   all all 127.0.0.1/32 trust
+host   all all all          scram-sha-256
+```
+
+So `docker exec db psql -U postgres` and `psql -h 127.0.0.1` **both succeed
+without checking any password**. Only a connection from another container over
+the `hive` network reaches the scram rule — the connection Hive's own services
+make. Probe it that way or the fault appears not to exist. The same ordering is
+what makes repair possible: `ALTER USER` over the socket needs no old password.
+
+**Only PostgreSQL drifts.** ClickHouse, Redis and VersityGW re-apply their
+credentials from the environment at every container start — the ClickHouse
+entrypoint rewrites `/etc/clickhouse-server/users.d/default-user.xml` each boot,
+and that path is not a mounted volume. `HIVE_ENCRYPTION_SECRET` is pinned the
+same way `POSTGRES_PASSWORD` is, since it decrypts values already in the
+database.
+
+**The two scripts.** Prevention is in `bootstrap-secrets.sh` (carry-forward,
+with `--rotate-db` as the deliberate override); cure is
+`hive-console/sync-db-password.sh` — probe from a throwaway container, `ALTER
+USER` over the socket, re-probe, re-run `migrations`, start
+`server`/`workflows`/`usage`. Idempotent: `in sync` and exit 0 when there is
+nothing to do, `--check` to report without changing anything.
+
+```bash
+./hive-console/sync-db-password.sh            # check and repair
+./hive-console/sync-db-password.sh --check    # report only
+```
+
+**Never answer a 28P01 here with `down -v`.** It is recoverable with no data
+loss, and the accounts, organizations and schema history live in that database.
 
 ## Upgrading
 
@@ -210,6 +270,9 @@ release.
 | `401` from the artifact endpoint | Wrong CDN key, or it was issued before `CDN_AUTH_PRIVATE_KEY` changed. |
 | Router cannot reach the artifact endpoint | Using `localhost:8082` instead of `server:3001`. |
 | CLI: `access token does not have permission` | Token missing Publish/Check/Push, or `--target` not passed. |
-| `migrations` exits non-zero | Usually credentials differing from a previous `.env`. `down -v`, delete `hive-console/.hive/`, start again. |
-| Login fails after regenerating `.env` | `SUPERTOKENS_*` changed, invalidating sessions. Clear cookies, or reset `hive-console/.hive/`. |
+| Login page loads, signing in shows **"Failed to fetch"** | `server` never started. Check `docker compose ps server` — `Created` means `migrations` failed. Run `./hive-console/sync-db-password.sh`. |
+| `migrations` exits 1 with `password authentication failed for user "postgres"` (28P01) | `.env` disagrees with `.hive/postgres`. `./hive-console/sync-db-password.sh`. Not a reason to `down -v`. |
+| `migrations` exits non-zero for some other reason | Read `docker compose logs migrations` before destroying anything. |
+| Login fails after regenerating `.env`, with a server error | `SUPERTOKENS_*` changed, invalidating sessions. Clear cookies for `localhost:8080`. |
+| Credentials rejected for an account that used to work | The accounts are rows in PostgreSQL; deleting `.hive/` deleted them. `.local-dev-account` is then stale — sign up again. `select count(*) from users` to confirm. |
 | Everything very slow | 24 containers. Raise Docker Desktop memory, or run Console without the POC. |

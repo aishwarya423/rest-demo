@@ -65,6 +65,7 @@ check this list before asserting anything in these areas.
 | "hive@15 uses `MINIO_ROOT_USER`" | The published get-started guide says so and is **stale**. hive@15 switched MinIO→VersityGW and renamed them to `S3_ROOT_USER` / `S3_ROOT_PASSWORD`. The old names are silently ignored and artifact writes fail later, not at startup. |
 | "Hive access tokens are target-scoped" | **Organization-scoped** in Hive 15, so every CLI call also needs `--target "<org>/<project>/<target>"`. |
 | "The router can use the localhost artifact URL" | It cannot — it runs in a container. Use `http://server:3001/artifacts/v1/<TARGET_ID>` from the router, and the `localhost:8082` form only from your shell. |
+| "Regenerating `.env` is safe once the stack has run" | **Not for `POSTGRES_PASSWORD`.** The postgres image applies it only at first `initdb`; with `.hive/postgres` present it keeps the old one. The result is `28P01`, `migrations` exit 1, and `server` never starting — which shows up only as **"Failed to fetch"** on the login page, because `app` stays healthy. Worse, `docker exec db psql -U postgres` succeeds anyway (`pg_hba.conf` trusts the socket and loopback), so the password looks correct. Probe from another container over the `hive` network. `bootstrap-secrets.sh` now carries the value forward; `hive-console/sync-db-password.sh` repairs a drifted database without data loss. Never answer this with `down -v`. |
 | "Self-hosting gives you the CDN" | The High-Availability CDN is **Cloud-only**. Self-hosted serves the same artifact *routes* from the `server` container (`CDN_API=1`), which is what the router consumes. The routes work; the CDN does not exist. |
 
 ## Repo-wide conventions
@@ -124,6 +125,7 @@ rest-demo/
 │   ├── invalidator/server.js        purge API; talks only to Redis
 │   ├── hive/                        Hive CLI image + publish.sh + check.sh
 │   ├── hive-console/                vendored official Compose file (hive@15.0.1)
+│   │                                + bootstrap-secrets.sh, sync-db-password.sh
 │   └── demo/demo.sh                 MISS -> HIT -> purge -> MISS, with REST call counts
 ├── hive-registry-poc/           separate: supergraph delivery over S3
 └── Docs/Hive-docs/              Confluence pages, briefs, deck source

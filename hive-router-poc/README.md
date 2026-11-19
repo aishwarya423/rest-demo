@@ -98,6 +98,7 @@ hive-router-poc/
 ├── hive-console/
 │   ├── docker-compose.community.yml  OFFICIAL file, vendored at hive@15.0.1
 │   ├── bootstrap-secrets.sh          generates .env
+│   ├── sync-db-password.sh           reconciles postgres with .env
 │   └── .hive/                        Hive's databases (gitignored, ~180 MB)
 ├── hive/
 │   ├── Dockerfile               Hive CLI (npm package, pinned)
@@ -241,6 +242,11 @@ Writes `.env` (gitignored, `chmod 600`) with every generated secret resolved.
 A Compose `.env` cannot run `$(openssl rand ...)`, which is why this is a script
 and not a committed file. [`.env.example`](.env.example) documents every
 variable and marks each as GENERATED, FIXED or MANUAL.
+
+Re-running it with `--force` is safe once the stack has been up: it carries
+`POSTGRES_PASSWORD` and `HIVE_ENCRYPTION_SECRET` forward from the existing
+`.env` whenever `hive-console/.hive/postgres` exists, because both are pinned by
+that data directory. See [the note below](#the-one-secret-that-cannot-be-rotated-in-place).
 
 ### 2. Start everything
 
@@ -412,9 +418,72 @@ configs in `router/` set it explicitly for that reason.
 | `401` from the artifact endpoint | Wrong CDN key, or the key was issued before `CDN_AUTH_PRIVATE_KEY` changed. Regenerating secrets invalidates every issued CDN token. |
 | Router cannot reach the artifact endpoint | Using `localhost:8082` instead of `server:3001`. See step 5. |
 | CLI: `Your access token does not have permission` | Token missing `Publish`/`Check`/`Push schema`, or `--target` not passed. |
-| `migrations` exits non-zero | Inspect `docker compose logs migrations`. Usually PostgreSQL or ClickHouse credentials differing from a previous `.env`. Fix: `down -v`, delete `hive-console/.hive/`, start again. |
-| Console login fails after regenerating `.env` | `SUPERTOKENS_*` keys changed, invalidating sessions. Clear cookies; if it persists, reset `hive-console/.hive/`. |
+| Login page loads but signing in shows **"Failed to fetch"** | The page is `app` (:8080); the API it posts to is `server` (:8082). `app` has no `depends_on`, so it stays healthy while `server` is absent — a POST to a port with nothing listening is reported by the browser as a fetch failure, not as a server error. Check `docker compose ps server`: if it is `Created` rather than `Up`, it never started because `migrations` failed. Run `./hive-console/sync-db-password.sh`. |
+| `migrations` exits non-zero with `password authentication failed for user "postgres"` (28P01) | `.env`'s `POSTGRES_PASSWORD` disagrees with the one `hive-console/.hive/postgres` was built with — see [below](#the-one-secret-that-cannot-be-rotated-in-place). Fix without losing data: `./hive-console/sync-db-password.sh`. Do **not** reach for `down -v` first. |
+| `migrations` exits non-zero for any other reason | `docker compose logs migrations`. If the cause really is unrecoverable state: `down -v`, `rm -rf hive-console/.hive`, start again. |
+| Console login fails after regenerating `.env`, with a *server* error rather than a fetch error | `SUPERTOKENS_*` keys changed, invalidating existing sessions. Clear cookies for `localhost:8080`. |
+| Signing in reports invalid credentials for an account that used to work | The accounts live in PostgreSQL. If `hive-console/.hive/` was deleted, so were they — `hive-console/.local-dev-account` now refers to nothing. Sign **up** again. Check with `docker compose exec db psql -U postgres -d registry -tAc 'select count(*) from users'`. |
 | Everything is very slow | 24 containers. Raise Docker Desktop's memory, or run Console without the POC. |
+
+## The one secret that cannot be rotated in place
+
+Worth knowing before you re-run `bootstrap-secrets.sh`, because the symptom
+points at entirely the wrong place.
+
+The `postgres` image applies `POSTGRES_PASSWORD` **only at first `initdb`**.
+Once `hive-console/.hive/postgres` exists it logs
+
+```
+Database directory appears to contain a database; Skipping initialization
+```
+
+and keeps the password that directory was built with. Regenerate `.env` after
+that point and the two disagree: `migrations`, `workflows` and `usage` all fail
+with `28P01`, and `server` — which waits on
+`migrations: service_completed_successfully` — never starts. `app` on :8080 is
+independent, stays healthy and serves the login page, so **the only thing you
+see is "Failed to fetch" when you sign in.**
+
+Three things make this hard to diagnose, so they are worth stating:
+
+- **`docker exec db psql -U postgres` succeeds anyway.** The data directory's
+  `pg_hba.conf` is `local … trust`, then `host all all 127.0.0.1/32 trust`, then
+  `host all all all scram-sha-256`. The socket and loopback paths never check a
+  password. Only a connection from another container, over the `hive` network,
+  reaches the scram rule — which is the connection Hive's services make. Test it
+  the way they connect, or the fault appears not to exist.
+- **ClickHouse, Redis and VersityGW do not have this problem.** Each re-applies
+  its credentials from the environment on every container start — the ClickHouse
+  entrypoint rewrites `/etc/clickhouse-server/users.d/default-user.xml` each
+  boot, and that path is not a mounted volume. PostgreSQL is the only store
+  whose credential is fixed at creation.
+- **`HIVE_ENCRYPTION_SECRET` has the same shape of problem.** It decrypts values
+  already written into that database, so it is pinned by the data directory too.
+
+Both scripts now handle this, so it should not recur:
+
+```bash
+# prevention: --force keeps the two pinned values when .hive/postgres exists
+./hive-console/bootstrap-secrets.sh --force
+
+# cure: reconcile a database that already drifted (idempotent)
+./hive-console/sync-db-password.sh
+
+# report only, change nothing
+./hive-console/sync-db-password.sh --check
+
+# deliberately rotate the DB password too, then apply it to the running database
+./hive-console/bootstrap-secrets.sh --force --rotate-db
+./hive-console/sync-db-password.sh
+```
+
+`sync-db-password.sh` probes from a throwaway container on the `hive` network,
+issues `ALTER USER` over the trusted Unix socket if that probe fails, re-probes,
+then re-runs `migrations` and starts `server`, `workflows` and `usage`. When the
+password already matches it prints `in sync` and exits 0, so it is safe to run
+before every `up`. Verified by inducing the fault on a healthy stack: detected,
+repaired, `migrations` exit 0, all 22 services back up, and a second run a clean
+no-op.
 
 ## Tear down
 
