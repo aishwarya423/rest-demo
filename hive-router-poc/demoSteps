@@ -1,0 +1,27 @@
+cd hive-router-poc
+./hive-console/bootstrap-secrets.sh 
+
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d --build
+
+aish123#ABC hive console password
+
+sw - organization
+insurance - project
+
+hive cmds // no need to use as already script files automate everything like hive token and all
+hive schema:publish --service <service-name> --url <url>  --target "<org>/<project>/<target>" <path/schema.graphql>
+hive schema:publish --service <service-name> --url <url>  --target "sw/insurance/development" <path/schema.graphql>
+
+set HIVE_TOKEN in .env file
+
+HIVE_TARGET=sw/insurance/development //add this in .env file
+Publishing and checking
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  run --rm hive-cli hive/check.sh  
+
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  run --rm hive-cli hive/publish.sh
+
+
+Tear down
+ in readme

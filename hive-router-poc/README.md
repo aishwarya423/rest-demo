@@ -477,6 +477,51 @@ Both scripts now handle this, so it should not recur:
 ./hive-console/sync-db-password.sh
 ```
 
+### If `.env` is deleted while `.hive/` survives
+
+Worth knowing because `down -v` does **not** remove Hive's data. Its state is in
+`hive-console/.hive/`, which is a set of *bind mounts*, not named volumes — so
+`down -v` leaves all of it on disk, and the registry database outlives the
+containers that used it.
+
+Lose `.env` after that and the generated `POSTGRES_PASSWORD` is gone, while the
+data directory it belongs to is still there. `bootstrap-secrets.sh` looks in two
+places for it — `.env`, then the running `db` container's environment, which
+survives a deleted file — and if neither has it, prints the two ways forward
+rather than writing an `.env` that cannot work:
+
+```bash
+# A. keep the databases. pg_hba.conf trusts the local socket, so the password
+#    can simply be reset to a freshly generated one.
+./hive-console/bootstrap-secrets.sh --rotate-db
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d db
+./hive-console/sync-db-password.sh
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d --build
+
+# B. start clean -- only once you have confirmed the registry holds nothing.
+docker compose -f docker-compose.yml -f docker-compose.console.yml down -v
+rm -rf hive-console/.hive
+./hive-console/bootstrap-secrets.sh
+```
+
+Check what is actually in there before choosing B. Accounts, organizations,
+projects and schema history all live in that database:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml exec db \
+  psql -U postgres -d registry -tAc \
+  'select (select count(*) from users), (select count(*) from organizations),
+          (select count(*) from projects), (select count(*) from schema_versions)'
+```
+
+Route A was exercised on 2026-11-19 against a database with one account, one
+organization and one Federation project: all three survived, `migrations` exited
+0, and the server logged no decryption failure, because nothing in that registry
+was encrypted with the rotated `HIVE_ENCRYPTION_SECRET` (no access tokens, CDN
+tokens or OIDC integrations existed yet). Rotating `SUPERTOKENS_*` does
+invalidate the session cookie, so expect to sign in again — the stored password
+hash is unaffected, so it is a sign-**in**, not a sign-up.
+
 `sync-db-password.sh` probes from a throwaway container on the `hive` network,
 issues `ALTER USER` over the trusted Unix socket if that probe fails, re-probes,
 then re-runs `migrations` and starts `server`, `workflows` and `usage`. When the

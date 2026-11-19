@@ -45,6 +45,14 @@
 # ===========================================================================
 set -euo pipefail
 
+# `set -e` kills this script on any non-zero command, including inside a
+# command substitution being assigned to a variable -- which is silent, and
+# therefore the worst possible way for a bootstrap script to fail. This trap
+# turns every such death into one line naming the line number. Do not remove
+# it: an early version of the carry-forward block below exited this way, with
+# no output at all, and the cause was not guessable from the symptom.
+trap 'rc=$?; echo "bootstrap-secrets.sh: failed at line $LINENO (exit $rc)" >&2' ERR
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$(dirname "$HERE")/.env"
 FORCE=0
@@ -59,8 +67,14 @@ for arg in "$@"; do
 done
 
 if [[ -f "$ENV_FILE" && $FORCE -eq 0 ]]; then
-  echo "$ENV_FILE already exists. Use --force to regenerate (this invalidates"
-  echo "all existing sessions and tokens; delete hive-console/.hive/ as well)."
+  echo "$ENV_FILE already exists -- nothing to do."
+  echo
+  echo "  --force      regenerate it. Sessions and issued CDN tokens are"
+  echo "               invalidated; POSTGRES_PASSWORD and HIVE_ENCRYPTION_SECRET"
+  echo "               are carried forward if hive-console/.hive/postgres exists,"
+  echo "               because that data directory pins both."
+  echo "  --rotate-db  ...and rotate the database password too, which then needs"
+  echo "               ./hive-console/sync-db-password.sh to be applied."
   exit 0
 fi
 
@@ -70,7 +84,27 @@ command -v openssl >/dev/null || { echo "openssl is required"; exit 1; }
 # Decide what must be carried forward, BEFORE generating anything.
 # ---------------------------------------------------------------------------
 # Read by key rather than sourcing: .env holds values containing ':' and '|'.
-env_val() { [[ -f "$ENV_FILE" ]] && sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 | sed "s/^'//; s/'\$//"; }
+#
+# This MUST return 0 even when it finds nothing. It is called as
+# `CARRY_PG="$(env_val ...)"`, and under `set -e` a non-zero return from a
+# command substitution being assigned terminates the script on the spot -- so a
+# missing .env would abort before the message explaining the missing .env.
+env_val() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n1 | sed "s/^'//; s/'\$//"
+  return 0
+}
+
+# Second source for the pinned values: a running container still carries them
+# in its environment, which survives a deleted .env. `docker inspect` is only
+# attempted if docker answers, and every failure is swallowed -- this is a
+# best-effort recovery, not a dependency.
+container_val() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" "$1" 2>/dev/null \
+    | sed -n "s/^$2=//p" | tail -n1
+  return 0
+}
 
 PG_DATA_DIR="$HERE/.hive/postgres"
 CARRIED=""
@@ -84,22 +118,40 @@ if [[ -d "$PG_DATA_DIR" ]]; then
   else
     CARRY_PG="$(env_val POSTGRES_PASSWORD)"
     CARRY_ENC="$(env_val HIVE_ENCRYPTION_SECRET)"
+    CARRY_SRC=".env"
+
+    # .env gone but the stack still up? The values are in the container
+    # environment, so the data directory need not be discarded.
     if [[ -z "$CARRY_PG" ]]; then
-      echo "$PG_DATA_DIR exists, but no POSTGRES_PASSWORD could be read from"
-      echo "$ENV_FILE -- so the password that database was built with is not"
-      echo "recoverable from here. Pick one:"
+      CARRY_PG="$(container_val hive-router-poc-db-1 POSTGRES_PASSWORD)"
+      [[ -n "$CARRY_PG" ]] && CARRY_SRC="the running db container"
+    fi
+    if [[ -z "$CARRY_ENC" ]]; then
+      CARRY_ENC="$(container_val hive-router-poc-server-1 HIVE_ENCRYPTION_SECRET)"
+    fi
+
+    if [[ -z "$CARRY_PG" ]]; then
+      echo "PROBLEM: $PG_DATA_DIR exists, but the password it was built with"
+      echo "cannot be found -- not in $ENV_FILE (missing or without the key),"
+      echo "and not in a running db container. The data directory stores only a"
+      echo "scram hash, so it cannot be read back out. Two ways forward:"
       echo
-      echo "  # keep the data, set the database to a new generated password"
-      echo "  ./hive-console/bootstrap-secrets.sh --force --rotate-db"
-      echo "  ./hive-console/sync-db-password.sh"
+      echo "  A. Keep the databases. pg_hba.conf trusts the local socket, so the"
+      echo "     password can simply be reset to a newly generated one:"
+      echo "       ./hive-console/bootstrap-secrets.sh --force --rotate-db"
+      echo "       docker compose -f docker-compose.yml -f docker-compose.console.yml up -d db"
+      echo "       ./hive-console/sync-db-password.sh"
+      echo "     HIVE_ENCRYPTION_SECRET is lost either way, so anything Hive had"
+      echo "     encrypted in that database (integration credentials) is gone."
       echo
-      echo "  # or discard Hive's databases and start clean"
-      echo "  docker compose -f docker-compose.yml -f docker-compose.console.yml down -v"
-      echo "  rm -rf hive-console/.hive"
-      echo "  ./hive-console/bootstrap-secrets.sh --force"
+      echo "  B. Start clean. Correct when the registry holds nothing you want"
+      echo "     -- check first, it is two commands in option A to find out:"
+      echo "       docker compose -f docker-compose.yml -f docker-compose.console.yml down -v"
+      echo "       rm -rf hive-console/.hive"
+      echo "       ./hive-console/bootstrap-secrets.sh"
       exit 1
     fi
-    CARRIED="POSTGRES_PASSWORD HIVE_ENCRYPTION_SECRET"
+    CARRIED="POSTGRES_PASSWORD HIVE_ENCRYPTION_SECRET (from $CARRY_SRC)"
   fi
 fi
 

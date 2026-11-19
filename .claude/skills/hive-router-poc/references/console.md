@@ -247,6 +247,44 @@ nothing to do, `--check` to report without changing anything.
 **Never answer a 28P01 here with `down -v`.** It is recoverable with no data
 loss, and the accounts, organizations and schema history live in that database.
 
+**`down -v` does not delete Hive's data anyway.** `.hive/` is a set of bind
+mounts, not named volumes, so the databases outlive the containers and survive
+`down -v` untouched. Only `rm -rf hive-console/.hive` removes them.
+
+**If `.env` is lost while `.hive/` survives**, the generated password is gone but
+the data need not be. `bootstrap-secrets.sh` looks in `.env`, then in the running
+`db` container's environment; failing both it prints two routes and writes
+nothing. Route A keeps everything:
+
+```bash
+./hive-console/bootstrap-secrets.sh --rotate-db
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d db
+./hive-console/sync-db-password.sh
+docker compose -f docker-compose.yml -f docker-compose.console.yml up -d --build
+```
+
+Verified 2026-11-19 on a registry holding one account, one organization and one
+Federation project: all survived. Rotating `HIVE_ENCRYPTION_SECRET` cost nothing
+there because no access tokens, CDN tokens or OIDC integrations existed — if any
+do, those specific values become undecryptable. Rotated `SUPERTOKENS_*` keys
+invalidate the session cookie only; the password hash is untouched, so it is a
+sign-in, not a sign-up. Always count the rows before choosing to start clean:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml exec db \
+  psql -U postgres -d registry -tAc 'select (select count(*) from users),
+  (select count(*) from organizations), (select count(*) from projects)'
+```
+
+**If you edit either script, keep `env_val` returning 0.** Both run under
+`set -euo pipefail`, and a non-zero return from a command substitution being
+*assigned* (`CARRY_PG="$(env_val POSTGRES_PASSWORD)"`) terminates the script
+immediately and silently. An early version of the carry-forward block guarded
+`env_val` with `[[ -f "$ENV_FILE" ]] && …`, so a missing `.env` aborted the
+script before the message explaining the missing `.env` — the script simply
+printed nothing and exited 1. `bootstrap-secrets.sh` now carries an `ERR` trap
+that reports the failing line number for exactly this class of fault.
+
 ## Upgrading
 
 ```bash
