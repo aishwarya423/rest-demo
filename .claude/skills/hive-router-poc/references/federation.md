@@ -183,6 +183,7 @@ see the warning in `references/console.md` about per-source defaults.
 | Federation planning and execution | yes | yes |
 | REST without subgraphs | **no** | yes, via Mesh |
 | Response cache | **no** | yes, in-memory or Redis |
+| Persistent / shared query-plan cache | **no** — moka, per process | yes, `hive-gateway:query-plan:*` in Redis |
 | Plugins | Rust plugins + coprocessors | large JS plugin ecosystem |
 | Subscriptions | SSE, WebSocket, HTTP streaming | WS, SSE, HTTP callbacks |
 | Image size | 32.5 MB | 141 MB |
@@ -191,6 +192,10 @@ see the warning in `references/console.md` about per-source defaults.
 Measured here on the `InsurancePortfolio` query: Router cold miss 6.1–8.5 ms,
 warm hit 2.6–2.9 ms; Gateway with `--hive-router-runtime` 8.7–12.8 ms and
 3.8–4.5 ms.
+
+If what you need is a cache that survives a restart or is shared between
+replicas, Gateway is the only option in this repo — see the edge cache on
+`:4020` in `references/caching.md`. The router cannot be configured into it.
 
 A `compare` profile runs Gateway with Router's planner on `:4010`:
 

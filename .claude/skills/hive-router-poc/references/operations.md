@@ -16,7 +16,8 @@
 |---|---|
 | 4000 | Hive Router, supergraph from a file — the base POC |
 | 4100 | Hive Router, supergraph from the registry (`registry` profile) |
-| 4010 | Hive Gateway with Router's planner (`compare` profile) |
+| 4010 | Hive Gateway with Router's planner, uncached (`compare` profile) |
+| 4020 | Hive Gateway with a **persistent Redis** response + query-plan cache (`edge-cache` profile) |
 | 4001 / 4002 / 4003 | accounts / policies / funds subgraphs |
 | 3001 / 3003 / 3002 | accounts / policies / funds REST services |
 | 6379 | Valkey — the POC's response cache |
@@ -46,6 +47,10 @@ docker compose -f docker-compose.yml -f docker-compose.console.yml \
 
 # add the Gateway comparison runtime on :4010
 docker compose -f docker-compose.yml --profile compare up -d
+
+# add the persistent Redis edge cache on :4020 — the only runtime here that
+# keeps a response cache AND a query plan cache outside the process
+docker compose -f docker-compose.yml --profile edge-cache up -d
 ```
 
 Tear down:
@@ -76,6 +81,10 @@ Overridable by environment: `ROUTER`, `INVALIDATOR`, `COMPOSE`, `VK`,
 ```bash
 ROUTER=http://localhost:4100/graphql ./demo.sh
 ```
+
+Do **not** point it at `:4020`. The edge cache there has no entity tags, so the
+purge step cannot clear it and steps 7-8 report a stale hit instead of the
+2-not-5 refetch. The demo is a story about the subgraph layer.
 
 The header comment states the principle worth repeating out loud during a demo:
 **the proof of a cache hit is the REST log, not the latency.** On a hit the
@@ -158,6 +167,9 @@ subgraph responses (not router responses).
 | Router serves an old schema | The host-side `supergraph.graphql` is stale — the router reads the Docker volume. Re-run `supergraph-compose` and restart the router |
 | `GET /accounts/{id}/funds` 500s | Known mock bug, not ours. Use `Account.fundHoldings.fund` |
 | Cache never hits | Check Valkey is reachable; cache errors are logged, not thrown, so a dead Redis looks like a permanent miss |
+| `:4020` returns `Cannot return null for non-nullable field <T>.id` on every query | `idFields: []` was removed from `gateway/gateway.config.ts`. The plugin then injects `__responseCacheId: id`, and an aliased key field on a federated entity nulls its parent on every runtime here. Put it back |
+| `:4020` still serves stale data after a purge | Expected. The edge cache writes no entity tags, so the invalidator cannot reach it; it expires on TTL. Delete `response-cache:*` by hand |
+| `:4020` says `didCache: false` with no errors | Usually the entry expired between calls — `GATEWAY_CACHE_TTL_MS` defaults to 30s. Raise it before concluding the cache is broken |
 
 Reading the volume the router actually serves:
 

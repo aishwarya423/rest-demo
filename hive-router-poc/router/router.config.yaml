@@ -1,7 +1,7 @@
 # ===========================================================================
 # HIVE ROUTER CONFIGURATION
 # ===========================================================================
-# Verified against hive-router 0.2.x. The notable thing about this file is what
+# Verified against hive-router 0.3.x. The notable thing about this file is what
 # is NOT in it: there is no response cache, and no Redis anywhere.
 #
 # Hive Router DOES have a `cache` key (see below), but it caches parsing,
@@ -30,8 +30,32 @@ http:
 introspection: true
 
 # --------------------------------------------------------------------------
-# IN-MEMORY caches only. No external store is supported.
-# These make repeat planning cheap; they do not make repeat DATA cheap.
+# IN-MEMORY ONLY. This cannot be pointed at Redis, and that is not a gap in
+# this file — the router has no external cache backend at all.
+#
+# Verified against ghcr.io/graphql-hive/router:latest (2026-11-19), two ways:
+#
+#   1. The binary carries no Redis client. Its cache crates are `moka
+#      0.12.16` and `lru 0.16.4`, both in-process. The only "redis" byte
+#      sequences in the 65 MB binary are Monaco's language list (for the
+#      bundled GraphiQL) and an OpenTelemetry db.system enum value
+#      ("redis valkey sql cassandra mssql mysql postgresql oracle").
+#   2. The config reference documents `cache` as "the router's in-memory
+#      caches for parsing, validation, normalization, and query plans". The
+#      complete set of sub-keys is plugin_supergraph_runtimes, parsing,
+#      validation, normalization and query_plans, each taking only
+#      max_entries / time_to_live / time_to_idle. There is no backend key.
+#
+# And note what is cached here: QUERY PLANS, not response data. Moving this to
+# Redis would remove zero upstream calls, and a Redis round trip (~0.2-1 ms)
+# is slower than a moka lookup (~microseconds) — on a single instance it would
+# make the router SLOWER. A distributed plan cache only pays off across many
+# replicas and cold starts, which is why Apollo gates its equivalent behind an
+# enterprise plan.
+#
+# If you want a persistent, Redis-backed cache at the edge, use Hive Gateway:
+#   gateway/gateway.config.ts  ->  docker compose --profile edge-cache up -d
+# It runs this same supergraph with this same Rust planner, on :4020.
 # --------------------------------------------------------------------------
 cache:
   router:

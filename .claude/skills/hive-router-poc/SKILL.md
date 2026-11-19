@@ -30,6 +30,8 @@ the schema registry.
                               |
          :4000 file-sourced   |   :4100 registry-sourced
                   Hive Router (Rust, NO response cache)
+        :4020 Hive Gateway, optional: the one runtime here that CAN
+              keep a response + query-plan cache in Redis (profile edge-cache)
                               |
           +-------------------+-------------------+
           v                   v                   v
@@ -57,6 +59,8 @@ check this list before asserting anything in these areas.
 | Claim | Reality |
 |---|---|
 | "Hive Router can cache responses" | **No.** Its `cache` key tunes *in-memory* parsing, validation, normalization and query-plan caches. It never stores response data and never removes a single upstream call. Response caching is an open RFC. This is the single most important fact in the repo. |
+| "The router's `cache:` can be pointed at Redis" | **No, and there is no option to add.** The binary links `moka 0.12.16` + `lru 0.16.4` and contains **no Redis client at all** (the only `redis` strings in 65 MB are Monaco's language list and an OpenTelemetry `db.system` enum). The documented sub-keys are only `plugin_supergraph_runtimes`/`parsing`/`validation`/`normalization`/`query_plans`, each taking `max_entries`/`time_to_live`/`time_to_idle`. Persistent caching **is** available in Hive — on Hive **Gateway** (`--profile edge-cache`, :4020), which persists the response body *and* the serialized query plan in Redis. See `references/caching.md`. |
+| "An aliased field works anywhere a plain one does" | **Not on a federated entity key.** `policies { id }` works; `policies { someAlias: id }` returns null and nulls its parent — on Hive Router, on Gateway with the router runtime, and on Gateway with its own planner. This is why the Gateway response cache needs `idFields: []` here: it injects `__responseCacheId: id` by default and breaks every query. |
 | "Put the cache in the router" | The cache lives **inside each subgraph** (`subgraphs/src/cache.mjs`). That is forced by the line above, but it is also better: the router's own `_entities` calls go through it, so a federated query is served from cache piece by piece. |
 | "Hive Router can call REST directly" | **No.** It consumes federation subgraphs over HTTP only. Hive Gateway can do REST via GraphQL Mesh; Router cannot, and cannot be made to. |
 | "`poll_interval` has a sane default" | Depends on the source. Under `supergraph.source: hive` it defaults to 10s. Under `source: storage` polling defaults to **disabled** — the router loads once, never reloads, and logs no warning. Always set it explicitly. |
@@ -121,6 +125,7 @@ rest-demo/
 │   ├── router/
 │   │   ├── router.config.yaml           supergraph from a file (:4000)
 │   │   └── router.registry.config.yaml  supergraph from the registry (:4100)
+│   ├── gateway/gateway.config.ts    Hive Gateway + PERSISTENT Redis cache (:4020)
 │   ├── invalidator/server.js        purge API; talks only to Redis
 │   ├── hive/                        Hive CLI image + publish.sh + check.sh
 │   ├── hive-console/                vendored official Compose file (hive@15.0.1)

@@ -53,9 +53,12 @@ http:
 
 introspection: true
 
-# In-memory only, exactly as in router.config.yaml. Hive Router has no response
-# cache; these make repeat PLANNING cheap, not repeat DATA. The POC's response
-# caching lives in the subgraphs.
+# In-memory only, exactly as in router.config.yaml, and it cannot be pointed at
+# Redis: the router binary carries no Redis client (moka + lru only). These make
+# repeat PLANNING cheap, not repeat DATA. The POC's response caching lives in
+# the subgraphs; for a persistent Redis cache at the EDGE see
+# gateway/gateway.config.ts (`--profile edge-cache`, :4020). Full evidence is in
+# the cache comment of router/router.config.yaml.
 cache:
   router:
     parsing:

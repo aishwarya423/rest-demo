@@ -19,6 +19,7 @@ one that is not mirrored in the other leaves dangling tags.
 - [Adding a purge route](#adding-a-purge-route)
 - [Proving cache behaviour](#proving-cache-behaviour)
 - [Measured results](#measured-results)
+- [The persistent edge cache on :4020](#the-persistent-edge-cache-on-4020)
 
 ## Why the cache is in the subgraphs
 
@@ -26,6 +27,13 @@ Hive Router has no response cache. Its `cache` config key tunes in-memory
 parsing, validation, normalization and query-plan caches — these make repeat
 *planning* cheap, and remove zero upstream calls. Treating that key as a
 response cache is the most common mistake made against this stack.
+
+Nor can that key be pointed at Redis. The router binary links `moka 0.12.16`
+and `lru 0.16.4` and carries **no Redis client whatsoever**; the only `redis`
+byte sequences in 65 MB are Monaco's editor language list and an OpenTelemetry
+`db.system` enum value. There is no option to add. If someone asks for
+"persistent caching with Redis", the answer is the edge cache on `:4020` —
+see the last section of this file — not a change to the router config.
 
 So the cache had to go somewhere else, and the subgraph turned out to be a
 better home than the gateway would have been:
@@ -237,3 +245,77 @@ From `hive-router-poc/README.md`, measured on the `InsurancePortfolio` query:
 Latency on this stack: cold miss 6.1–8.5 ms, warm hit 2.6–2.9 ms. Quote the
 REST-call numbers in preference to the timings — the timings are dominated by
 loopback mocks and do not generalise.
+
+## The persistent edge cache on :4020
+
+A second, optional cache layer. `gateway/gateway.config.ts` runs Hive Gateway
+on the same supergraph with the same Rust planner
+(`--hive-router-runtime`), with Redis as its cache store:
+
+```bash
+docker compose -f hive-router-poc/docker-compose.yml --profile edge-cache up -d
+```
+
+One `cache: { type: 'redis' }` persists three things, all confirmed in Valkey:
+
+| Key | Holds | TTL observed |
+|---|---|---|
+| `response-cache:<sha256>` | the cached response body | `GATEWAY_CACHE_TTL_MS` |
+| `hive-gateway:query-plan:<hash>:<hash>` | the serialized query plan, JSON | ~24 h |
+| `hive-gateway:supergraph` | the supergraph SDL | ~10 s (poll cache) |
+
+The query-plan key is the thing the router keeps in moka under
+`cache.supergraph.query_plans`. So a shared, restart-surviving query-plan cache
+*does* exist in Hive — on Gateway, not on Router.
+
+Verified 2026-11-19 against Hive Gateway 2.15.10: cold query `didCache: true`
+with 5 `REST GET` lines; repeat `hit: true` with 0; data byte-identical to
+`:4000`; and with **all six subgraph and REST containers stopped and the
+gateway container restarted**, the same query still returned the full correct
+response from Redis while `:4000` returned `SUBREQUEST_HTTP_ERROR`.
+
+### Two things that will bite
+
+**`idFields: []` is load-bearing — do not remove it.** By default the response
+cache rewrites every selection set to also fetch the key under an alias,
+`__responseCacheId: id`, to build `Typename:id` tags. On a federated graph that
+alias comes back null and nulls its parent:
+
+```
+"message": "Cannot return null for non-nullable field Policy.id.",
+"path": ["account","policies",0,"__responseCacheId"]
+```
+
+Not a plugin bug. An aliased key field on a federated entity fails on every
+runtime here — Hive Router, Gateway with the router runtime, and Gateway with
+its own planner — with no cache plugin involved. `policies { id }` works;
+`policies { anyAlias: id }` does not.
+
+**The invalidator cannot purge this layer**, because with `idFields: []` it
+writes no entity tags (verified: `SISMEMBER` against `Account`,
+`Account:acct-1001`, `Fund` and `Policy` all return 0, so it also cannot
+disturb the subgraph layer). Expiry here is TTL-only. By hand:
+
+```bash
+docker compose exec valkey valkey-cli --scan --pattern 'response-cache:*' \
+  | xargs -r docker compose exec -T valkey valkey-cli del
+```
+
+Keep `GATEWAY_CACHE_TTL_MS` at or below the **shortest** subgraph TTL (30 s): a
+single gateway response can splice accounts, policies and funds data together,
+and holding the whole response longer than its freshest component would serve
+data staler than any subgraph would.
+
+### Which layer answers which question
+
+| | `:4000` router + subgraph cache | `:4020` gateway + edge cache |
+|---|---|---|
+| Survives a restart | no (moka, per process) | **yes** (Redis) |
+| Shared across replicas | no | **yes** |
+| Targeted entity purge | **yes** — 2 REST calls, not 5 | no — TTL only |
+| REST calls on a hit | 0 | 0 |
+| Partial reuse of a federated query | **yes** | no, whole-response |
+
+`:4010` (`--profile compare`) is deliberately left uncached: it exists to
+compare planners on identical inputs, and an edge cache would stop it reaching
+the subgraphs at all.

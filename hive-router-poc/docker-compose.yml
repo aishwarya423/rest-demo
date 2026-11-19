@@ -5,6 +5,8 @@
 #   docker compose -f hive-router-poc/docker-compose.yml up --build -d
 #
 #   GraphQL (router)  http://localhost:4000/graphql
+#   GraphQL (gateway)  http://localhost:4020/graphql   --profile edge-cache
+#                      ^ persistent Redis response cache; router cannot do this
 #   Invalidator       http://localhost:8090
 #   Valkey            localhost:6379
 #   Subgraphs         :4001 accounts  :4002 policies  :4003 funds
@@ -159,6 +161,52 @@ services:
     volumes: ["supergraph:/supergraph:ro"]
     depends_on:
       supergraph-compose: { condition: service_completed_successfully }
+
+  # ------------------------------------- persistent Redis cache at the edge
+  # The router's `cache:` block is in-memory only and cannot be pointed at
+  # Redis (verified against the router binary — see gateway/gateway.config.ts
+  # for the evidence). Hive Gateway supports Redis natively, runs the SAME
+  # supergraph with the SAME Rust planner, and so is where a persistent edge
+  # cache can actually live today.
+  #
+  # Deliberately a SEPARATE service from gateway-router-runtime: that one
+  # exists to compare planners on identical inputs, and an edge response cache
+  # would stop it hitting the subgraphs at all, invalidating the comparison.
+  #
+  #   docker compose -f docker-compose.yml --profile edge-cache up -d
+  #   -> http://localhost:4020/graphql
+  #
+  # Unlike the router's moka caches, this one survives `restart` and is shared
+  # by every replica. Prove it: query twice, `docker compose restart
+  # gateway-cached`, query again -> still a hit, still zero REST calls.
+  gateway-cached:
+    profiles: ["edge-cache"]
+    image: ghcr.io/graphql-hive/gateway:latest
+    command:
+      - supergraph
+      - /supergraph/supergraph.graphql
+      - --hive-router-runtime
+      - --host
+      - 0.0.0.0
+      - --port
+      - "4020"
+    ports: ["4020:4020"]
+    environment:
+      # Same Valkey, same logical DB as the subgraph caches, so the existing
+      # invalidator reaches both layers with one purge.
+      REDIS_URL: redis://valkey:6379
+      GATEWAY_CACHE_TTL_MS: ${GATEWAY_CACHE_TTL_MS:-30000}
+      FUNDS_TTL_MS: ${FUNDS_TTL_MS:-300000}
+      CACHE_EXTENSION_METADATA: ${CACHE_EXTENSION_METADATA:-1}
+    volumes:
+      - ./gateway/gateway.config.ts:/gateway/gateway.config.ts:ro
+      - supergraph:/supergraph:ro
+    depends_on:
+      valkey: { condition: service_healthy }
+      supergraph-compose: { condition: service_completed_successfully }
+      accounts-subgraph: { condition: service_started }
+      policies-subgraph: { condition: service_started }
+      funds-subgraph: { condition: service_started }
 
 volumes:
   valkey-data:

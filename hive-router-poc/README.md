@@ -125,6 +125,20 @@ docker compose -f hive-router-poc/docker-compose.yml up --build -d
 
 `supergraph-compose` runs once and exits 0. That is success, not a failure.
 
+Two optional runtimes sit behind profiles:
+
+```bash
+# persistent, Redis-backed response + query-plan cache at the edge  -> :4020
+docker compose -f hive-router-poc/docker-compose.yml --profile edge-cache up -d
+
+# Hive Gateway running Router's planner, for comparison, uncached   -> :4010
+docker compose -f hive-router-poc/docker-compose.yml --profile compare up -d
+```
+
+The router's own `cache:` block is in-memory only and cannot be pointed at
+Redis — see [Can the router's own cache be made persistent in
+Redis?](#can-the-routers-own-cache-be-made-persistent-in-redis-no).
+
 > **Do not run this at the same time as `hive-poc`.** Both use 4000, 6379 and
 > 8090. Stop the other first:
 > `docker compose -f hive-poc/docker-compose.yml down`
@@ -612,6 +626,119 @@ invalidation runs `KEYS <Typename>:*` internally, so prefixing entity ids here
 would make purging a whole type silently match nothing. The comment in
 [`subgraphs/src/cache.mjs`](subgraphs/src/cache.mjs) says so, because it is the
 kind of thing someone will otherwise "tidy up" later and break.
+
+### Can the router's own cache be made persistent in Redis? No.
+
+Asked often enough to be worth answering properly, because the router *does*
+have a `cache:` block and it looks like the place a Redis URL should go.
+
+It cannot. Verified two ways against `ghcr.io/graphql-hive/router:latest`:
+
+| Evidence | Result |
+|---|---|
+| Cache crates linked into the binary | `moka 0.12.16`, `lru 0.16.4` — both in-process |
+| Any Redis client in the binary | **none.** The only `redis` byte sequences in 65 MB are Monaco's editor language list (for the bundled GraphiQL) and an OpenTelemetry `db.system` enum value |
+| Documented sub-keys of `cache` | `plugin_supergraph_runtimes`, `parsing`, `validation`, `normalization`, `query_plans` — each taking only `max_entries` / `time_to_live` / `time_to_idle`. There is no backend key |
+| What the official reference calls it | "the router's **in-memory** caches for parsing, validation, normalization, and query plans" |
+
+Two things are worth separating, because conflating them is how people end up
+disappointed:
+
+1. **That block caches query plans, not response data.** Moving it to Redis
+   would remove zero upstream calls. And a Redis round trip (~0.2–1 ms) is
+   slower than a moka lookup (~microseconds), so on a single instance it would
+   make the router *slower*. A distributed plan cache only pays off across many
+   replicas and cold starts — which is why Apollo gates its equivalent behind
+   an enterprise plan.
+2. **Persistent caching is available in the Hive ecosystem — on Hive Gateway.**
+   See below. That is the honest answer to "make it persistent with Redis".
+
+### Persistent Redis cache at the edge — `--profile edge-cache`, :4020
+
+Hive Gateway supports Redis natively and runs this same supergraph with the
+same Rust planner (`--hive-router-runtime`). Config:
+[`gateway/gateway.config.ts`](gateway/gateway.config.ts).
+
+```bash
+docker compose -f hive-router-poc/docker-compose.yml --profile edge-cache up -d
+# -> http://localhost:4020/graphql    (:4000 is untouched and unaffected)
+```
+
+One `cache: { type: 'redis' }` persists three things, all confirmed present in
+Valkey:
+
+| Key | Holds | TTL observed |
+|---|---|---|
+| `response-cache:<sha256>` | the cached response body | ours (`GATEWAY_CACHE_TTL_MS`) |
+| `hive-gateway:query-plan:<hash>:<hash>` | the serialized query plan, as JSON | ~24 h |
+| `hive-gateway:supergraph` | the supergraph SDL | ~10 s (it is a poll cache) |
+
+The middle one is exactly what the router holds in moka under
+`cache.supergraph.query_plans` — so a **shared, restart-surviving query-plan
+cache does exist in Hive**, just not in Hive Router.
+
+#### Verified results (2026-11-19, Hive Gateway 2.15.10)
+
+| Check | Result |
+|---|---|
+| Cold query | `didCache: true`, **5** `REST GET` lines upstream |
+| Repeat | `hit: true`, **0** `REST GET` lines |
+| Per-coordinate TTL (`FundDetail`) | `ttl: 300000`, not the 30 000 default |
+| Data vs `:4000` | **identical**, byte for byte (264 bytes) |
+| All six subgraph + REST containers stopped, gateway container **restarted**, same query | `hit: true`, zero errors, full correct response from Redis |
+| `:4000` at that same moment | `SUBREQUEST_HTTP_ERROR` — moka cannot survive this by construction |
+| Entity tags written by this layer | **none** — `SISMEMBER` against `Account`, `Account:acct-1001`, `Fund`, `Policy` all return 0, so it cannot disturb the invalidator |
+| Existing `demo.sh` on `:4000` | unchanged: targeted purge still gives **2** REST calls, not 5 |
+
+That restart test is the point. A fresh process with every upstream stopped
+answering correctly is as strong a persistence proof as this stack can give.
+
+#### Two traps found while building it
+
+**`idFields: []` is load-bearing.** By default the response cache rewrites
+every selection set to also fetch the key under an alias,
+`__responseCacheId: id`, so it can build `Typename:id` tags. On this federated
+graph that alias comes back null and nulls its parent:
+
+```
+"message": "Cannot return null for non-nullable field Policy.id.",
+"path": ["account","policies",0,"__responseCacheId"]
+```
+
+It is not a bug in the cache plugin. **An aliased key field on a federated
+entity is broken in every runtime here** — verified by hand with no cache
+plugin involved:
+
+| Query | `:4000` Router (Rust) | `:4010` Gateway + router runtime | Gateway + own planner |
+|---|---|---|---|
+| `policies { id }` | works | works | works |
+| `policies { __responseCacheId: id }` | nulls parent | nulls parent | nulls parent |
+
+Worth reporting upstream. Until it is fixed, `idFields` stays empty, and the
+cost is that expiry at this layer is TTL-only.
+
+**The invalidator cannot purge this layer.** It purges by entity tag, and this
+layer writes none. For up to `GATEWAY_CACHE_TTL_MS` after a purge, `:4020`
+serves the stale response while `:4000` is already correct. By hand:
+
+```bash
+docker compose exec valkey valkey-cli --scan --pattern 'response-cache:*' \
+  | xargs -r docker compose exec -T valkey valkey-cli del
+```
+
+So the two layers answer different questions, and the POC keeps both:
+
+| | `:4000` router + subgraph cache | `:4020` gateway + edge cache |
+|---|---|---|
+| Survives a restart | no (moka, per process) | **yes** (Redis) |
+| Shared across replicas | no | **yes** |
+| Targeted entity purge | **yes** — 2 REST calls, not 5 | no — TTL only |
+| REST calls on a hit | 0 | 0 |
+| Partial reuse of a federated query | **yes** | no, whole-response |
+
+`:4010` (`--profile compare`) is deliberately left without this cache: it exists
+to compare planners on identical inputs, and an edge cache would stop it
+reaching the subgraphs at all.
 
 ---
 
