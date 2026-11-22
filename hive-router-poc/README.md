@@ -108,6 +108,23 @@ hive-router-poc/
 └── supergraph.graphql           generated (gitignored)
 ```
 
+Two things that belong to this stack but live at the repository root, because
+they span it and the documents:
+
+```
+rest-demo/
+├── scripts/
+│   ├── test-supergraph-lifecycle.sh   subgraph change -> registry -> CDN ->
+│   │                                  runtime -> client query, as a test
+│   ├── supergraph-version.sh          what the CDN publishes, and what each
+│   │                                  runtime is actually serving
+│   └── lib/schema-fingerprint.mjs     canonical schema hash (graphql-js)
+└── Docs/
+    ├── SUPERGRAPH-CDN-LIFECYCLE.md    the full lifecycle, verified end to end
+    ├── SUPERGRAPH-CICD.md             the same path through CI/CD
+    └── ci/github-actions-graphql-schema.yml
+```
+
 ---
 
 ## Quick start
@@ -299,6 +316,30 @@ HIVE_TOKEN='hvo1...'
 
 ### 5. Create a CDN access token  — MANUAL
 
+> **The single most common mistake here.** `HIVE_CDN_ENDPOINT` must end with the
+> target's **UUID**, never its name. `…/artifacts/v1/development` returns
+> **403 Forbidden** — not 404 — and the router then loops on
+> `failed to load supergraph` every `poll_interval` while answering every query
+> with `NO_SUPERGRAPH_AVAILABLE`. The correct form is
+> `http://server:3001/artifacts/v1/cc74f9a2-…`. If you ever need the id without
+> the UI:
+>
+> ```bash
+> docker compose -f docker-compose.yml -f docker-compose.console.yml exec db \
+>   psql -U postgres -d registry -tAc 'select id, name from targets order by name'
+> ```
+>
+> And to test the endpoint and key together before starting the router, from a
+> container on the `hive` network — 200 is right, 403 means one of the two is
+> wrong:
+>
+> ```bash
+> docker run --rm --network hive curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}\n' \
+>   -H "X-Hive-CDN-Key: $(sed -n 's/^HIVE_CDN_KEY=//p' .env | tail -1)" \
+>   "$(sed -n 's/^HIVE_CDN_ENDPOINT=//p' .env | tail -1)/supergraph"
+> ```
+
+
 Target → Settings → **CDN Tokens** → Create new CDN token. Copy the key, and
 take the target id from Settings → General.
 
@@ -350,6 +391,54 @@ curl -s localhost:4100/graphql -H 'content-type: application/json' \
 
 It is behind a profile because it cannot start until a target exists and the two
 CDN variables are filled in.
+
+### 9. Optional: Hive Gateway on the same CDN artifact
+
+Hive Gateway consumes the self-hosted artifact endpoint natively — `[Verified]`
+on Gateway 2.15.10, which reads `HIVE_CDN_ENDPOINT` and `HIVE_CDN_KEY` straight
+from the environment, so no supergraph path argument is needed:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  --profile gateway-cdn up -d hive-gateway-cdn
+
+curl -s localhost:4110/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ account(id:\"acct-1001\"){ holderName policies{ policyNumber } } }"}'
+```
+
+Three runtimes then serve the same subgraphs from three different sources:
+`:4000` from the file, `:4100` from the CDN via Hive Router, `:4110` from the
+CDN via Hive Gateway. Useful beyond a comparison: Gateway sends CORS headers
+and Router does not, which decides which one the Console's Laboratory can call
+from a browser.
+
+### 10. Verify what each runtime is actually serving
+
+Neither runtime exposes its loaded supergraph version — `[Verified]` on Router
+0.3.16, `/health` and `/readiness` return an empty 200 and every other path
+returns the landing page. So the check compares schemas instead:
+
+```bash
+cd .. && ./scripts/supergraph-version.sh
+```
+
+It prints the CDN's `x-hive-schema-version-id`, its `etag`, artifact checksums
+and a canonical fingerprint, then the fingerprint of every running runtime with
+a MATCHES/DIFFERS verdict. Exit code is non-zero when a CDN-sourced runtime has
+not converged.
+
+The whole lifecycle — change a subgraph, check, publish, watch the CDN issue a
+new version, watch `:4100` and `:4110` reload while `:4000` stays stale, then
+revert — runs as one test:
+
+```bash
+cd .. && ./scripts/test-supergraph-lifecycle.sh
+```
+
+`[Verified]` 28/28 on 2026-11-19. Full walkthrough, including the Console
+Laboratory and the CI/CD path, in
+[`Docs/SUPERGRAPH-CDN-LIFECYCLE.md`](../Docs/SUPERGRAPH-CDN-LIFECYCLE.md) and
+[`Docs/SUPERGRAPH-CICD.md`](../Docs/SUPERGRAPH-CICD.md).
 
 ## Results — self-hosted Console
 
@@ -416,6 +505,7 @@ configs in `router/` set it explicitly for that reason.
 | Router logs `No supergraph available yet` then recovers | Normal startup race: it answers one request before the first poll completes. Only a problem if it never logs `supergraph loaded successfully`. |
 | Router 503s forever, endpoint reads `UNSET-see-README-step-5` | `HIVE_CDN_ENDPOINT` / `HIVE_CDN_KEY` are not in `.env`. |
 | `401` from the artifact endpoint | Wrong CDN key, or the key was issued before `CDN_AUTH_PRIVATE_KEY` changed. Regenerating secrets invalidates every issued CDN token. |
+| `403 Forbidden`, router logs `NO_SUPERGRAPH_AVAILABLE`, `:4100` returns `{"errors":[{"extensions":{"code":"NO_SUPERGRAPH_AVAILABLE"}}]}` | `HIVE_CDN_ENDPOINT` ends with the target **name** (`…/artifacts/v1/development`) instead of its **UUID**. The route keys on the id; the name is a different, non-existent target as far as the token's scope is concerned, so it is rejected rather than 404'd. Get the id from Target → Settings → General, or straight from the database (query below). |
 | Router cannot reach the artifact endpoint | Using `localhost:8082` instead of `server:3001`. See step 5. |
 | CLI: `Your access token does not have permission` | Token missing `Publish`/`Check`/`Push schema`, or `--target` not passed. |
 | Login page loads but signing in shows **"Failed to fetch"** | The page is `app` (:8080); the API it posts to is `server` (:8082). `app` has no `depends_on`, so it stays healthy while `server` is absent — a POST to a port with nothing listening is reported by the browser as a fetch failure, not as a server error. Check `docker compose ps server`: if it is `Created` rather than `Up`, it never started because `migrations` failed. Run `./hive-console/sync-db-password.sh`. |

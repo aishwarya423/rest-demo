@@ -48,7 +48,10 @@ services:
     build:
       context: ./hive
     profiles: ["tools"]
-    networks: ["stack"]
+    # Both networks on purpose: `stack` reaches the registry at
+    # server:3001, `default` reaches the subgraphs and both routers, so
+    # `hive introspect` and `hive dev` can be pointed at them by name.
+    networks: ["stack", "default"]
     environment:
       HIVE_TOKEN: ${HIVE_TOKEN:-}
       HIVE_REGISTRY_ENDPOINT: ${HIVE_REGISTRY_ENDPOINT:-http://server:3001/graphql}
@@ -78,7 +81,10 @@ services:
   hive-router-registry:
     image: ghcr.io/graphql-hive/router:latest
     profiles: ["registry"]
-    ports: ["4100:4000"]
+    # Host port is overridable so the CDN-sourced router can take over
+    # :4000 for a like-for-like demo. Stop `hive-router` first, then:
+    #   REGISTRY_ROUTER_PORT=4000 docker compose ... up -d hive-router-registry
+    ports: ["${REGISTRY_ROUTER_PORT:-4100}:4000"]
     networks:
       - default # to reach accounts-subgraph:4001, policies:4002, funds:4003
       - stack # to reach server:3001 for the supergraph artifact
@@ -92,6 +98,43 @@ services:
       HIVE_CDN_KEY: ${HIVE_CDN_KEY:-UNSET-see-README-step-5}
     volumes:
       - ./router/router.registry.config.yaml:/app/router.config.yaml:ro
+    depends_on:
+      accounts-subgraph: { condition: service_started }
+      policies-subgraph: { condition: service_started }
+      funds-subgraph: { condition: service_started }
+
+  # --------------------------------------- Hive Gateway, supergraph from CDN
+  # The `compare` profile in docker-compose.yml runs Hive Gateway from the
+  # mounted supergraph FILE. This one runs the same image against the same
+  # subgraphs but takes its supergraph from the self-hosted CDN artifact
+  # endpoint, so the registry -> CDN -> runtime path can be demonstrated on
+  # the Node gateway as well as on the Rust router.
+  #
+  #   docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  #     --profile gateway-cdn up -d hive-gateway-cdn
+  #   -> http://localhost:4110/graphql
+  #
+  # [Verified] Hive Gateway 2.15.10 reads HIVE_CDN_ENDPOINT and HIVE_CDN_KEY
+  # straight from the environment -- `supergraph` needs no positional path
+  # argument when they are set, and the log line to look for is
+  # "Loading supergraph from Hive CDN". The equivalent flags are
+  # --hive-cdn-endpoint / --hive-cdn-key.
+  hive-gateway-cdn:
+    profiles: ["gateway-cdn"]
+    image: ghcr.io/graphql-hive/gateway:latest
+    command: ["supergraph", "--host", "0.0.0.0", "--port", "4000"]
+    # Host port overridable for the same reason as hive-router-registry.
+    ports: ["${CDN_GATEWAY_PORT:-4110}:4000"]
+    networks:
+      - default # subgraphs: accounts:4001, policies:4002, funds:4003
+      - stack # server:3001 for the supergraph artifact
+    environment:
+      # Same `:-` defaults, and for the same reason, as hive-router-registry.
+      HIVE_CDN_ENDPOINT: ${HIVE_CDN_ENDPOINT:-UNSET-see-README-step-5}
+      HIVE_CDN_KEY: ${HIVE_CDN_KEY:-UNSET-see-README-step-5}
+      # Gateway's own poll interval. Defaults to 10s, set explicitly so this
+      # file and router.registry.config.yaml read the same way.
+      POLLING: ${CDN_GATEWAY_POLLING:-10s}
     depends_on:
       accounts-subgraph: { condition: service_started }
       policies-subgraph: { condition: service_started }

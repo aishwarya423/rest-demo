@@ -4,8 +4,10 @@ The registry. Adds schema versioning, composition, schema checks, policy
 linting and usage analytics, with no dependency on Hive Cloud. Everything runs
 locally.
 
-Verified end to end on 2026-11-04 against `hive@15.0.1`, `hive-router` 0.3.12
-and Hive CLI 0.68.2.
+Verified end to end on 2026-11-04 against `hive@15.0.1` and Hive CLI 0.68.2,
+and again on 2026-11-19 against `hive-router` **0.3.16** and Hive Gateway
+**2.15.10**. Earlier notes in this repository saying router 0.3.12 or 0.3.14
+are stale; the image tracked by `:latest` reports 0.3.16.
 
 ## Contents
 
@@ -16,6 +18,9 @@ and Hive CLI 0.68.2.
 - [Connecting the router](#connecting-the-router)
 - [Gotchas](#gotchas)
 - [Credential drift: the one that cannot be rotated in place](#credential-drift-the-one-that-cannot-be-rotated-in-place)
+- [Artifact versioning: the two identifiers](#artifact-versioning-the-two-identifiers)
+- [Three kinds of credential, not interchangeable](#three-kinds-of-credential-not-interchangeable)
+- [The Laboratory](#the-laboratory)
 - [Upgrading](#upgrading)
 - [Troubleshooting](#troubleshooting)
 
@@ -164,6 +169,23 @@ healthy first.
 `--target "<org>/<project>/<target>"`. That is why `.env` carries `HIVE_TARGET`
 alongside `HIVE_TOKEN`.
 
+**`HIVE_CDN_ENDPOINT` ends with the target's UUID, not its name.** Verified
+2026-11-19: with the same valid CDN key, `…/artifacts/v1/development` returns
+**403 Forbidden** and `…/artifacts/v1/cc74f9a2-…` returns 200. A 403 rather than
+a 404 is what makes this confusing — the path looks plausible, so the key gets
+blamed. The router's symptom is a `failed to load supergraph` line every
+`poll_interval` and `NO_SUPERGRAPH_AVAILABLE` on every query. Test the pair
+before starting the router:
+
+```bash
+docker run --rm --network hive curlimages/curl:8.11.1 -s -o /dev/null -w '%{http_code}\n' \
+  -H "X-Hive-CDN-Key: $(sed -n 's/^HIVE_CDN_KEY=//p' .env | tail -1)" \
+  "$(sed -n 's/^HIVE_CDN_ENDPOINT=//p' .env | tail -1)/supergraph"
+```
+
+Target ids without the UI: `select id, name from targets` in the `registry`
+database.
+
 **Use the in-network artifact URL for the router.** The "Connect to CDN" dialog
 shows `host.docker.internal:8082`, and Settings shows `localhost:8082`. Both are
 host-side. The router is a container on the `hive` network, so it should use
@@ -285,6 +307,107 @@ script before the message explaining the missing `.env` — the script simply
 printed nothing and exited 1. `bootstrap-secrets.sh` now carries an `ERR` trap
 that reports the failing line number for exactly this class of fault.
 
+## Artifact versioning: the two identifiers
+
+Every artifact response from `/artifacts/v1/<TARGET_UUID>/<artifact>` carries
+both, and they answer different questions:
+
+```
+x-hive-schema-version-id: c72f8717-f2d1-4177-969e-8a3a7876e164
+etag: "fd3f1b3034dbd4a6b412b14ca61301cd"
+```
+
+| Header | Identifies | Changes when |
+|---|---|---|
+| `x-hive-schema-version-id` | the publish **event** | every successful publish, even if the bytes are identical |
+| `etag` | the **content** | only when the bytes change |
+
+Verified: republishing the previous schema produced a new version id
+(`3590d700-0e89-…`) with the old etag (`"cf9fc47a…"`). So the version id is the
+audit trail and the etag is the "did anything actually change" test. A rollback
+that produces a *new* etag is not a rollback.
+
+Artifacts this release actually serves — probed, not assumed:
+
+| Artifact | Status | Body |
+|---|---|---|
+| `supergraph` | 200 | the supergraph, `@join__*` and all; what a runtime loads |
+| `sdl` | 200 | the API schema; what a client introspects |
+| `services` | 200 | JSON `{name, sdl, url}` per subgraph |
+| `metadata` | **404** | not served self-hosted, though the CLI accepts the name |
+
+`hive artifact:fetch --artifact <name> --cdn.endpoint … --cdn.accessToken …`
+works against the self-hosted endpoint. Note its stdout is the artifact plus
+the CLI's own framing, so do not checksum that pipeline and compare it against
+a raw `curl` — they differ, and the difference looks like corruption.
+
+## Three kinds of credential, not interchangeable
+
+| Credential | DB table | Works for |
+|---|---|---|
+| `HIVE_TOKEN` — target registry token | `tokens` | `hive schema:check`, `schema:publish`, `schema:fetch` |
+| `HIVE_CDN_KEY` — CDN access token | `cdn_access_tokens` | `X-Hive-CDN-Key` on the artifact routes |
+| organization access token | `organization_access_tokens` | the public GraphQL API at `:8082/graphql` |
+
+This stack has the first two and **none** of the third. The trap: the public
+GraphQL API rejects the registry token outright — a bare `{ __typename }` with
+it in either `X-API-Token` or `Authorization: Bearer` returns
+`{"errors":[{"message":"Invalid token provided"}]}`, while the same query with
+**no** auth header succeeds. So a script that tries to read schema versions out
+of the public API with `HIVE_TOKEN` fails in a way that reads as a revoked
+token. Use the CDN response headers above; they need only the CDN key.
+
+Related: `hive whoami` with no `--registry.endpoint` asks Hive **Cloud**, so it
+rejects a self-hosted token with "the registry access token was rejected" even
+when the token is perfectly good for publishing.
+
+## The Laboratory
+
+`http://localhost:8080/<org>/<project>/<target>/laboratory` — the Console's
+built-in GraphiQL, always backed by the schema the registry has composed. The
+fastest way to confirm a publish landed, because it needs no runtime at all.
+
+Three features, each with a table behind it in this release:
+`document_collections` + `document_collection_documents` (saved operations,
+shared per target) and `document_preflight_scripts` (JavaScript run before each
+request, for minting auth headers).
+
+**It cannot execute anything until the target's endpoint is set.** The endpoint
+is the per-target `targets.graphql_endpoint_url` column, and it is NULL on all
+three targets here:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.console.yml exec db \
+  psql -U postgres -d registry \
+  -c "select name, coalesce(graphql_endpoint_url,'<null>') from targets order by name"
+```
+
+Set it in Target → Settings, and set it to **`http://localhost:4110/graphql`**,
+the Hive **Gateway**, for two reasons:
+
+- **`localhost`, not a container name.** The request leaves your *browser*, so
+  it needs a host-reachable address. This is the exact opposite of
+  `HIVE_CDN_ENDPOINT`, which must be the in-network `server:3001` form because
+  a container fetches it. Mixing the two up is the most common misconfiguration
+  on this stack.
+- **Gateway, not Router.** Verified: Hive Router 0.3.16 answers
+  `OPTIONS /graphql` with **405 Unsupported HTTP method** and sends no
+  `Access-Control-*` headers, so a browser request from the Console's origin
+  fails its CORS preflight. Hive Gateway 2.15.10 on the identical supergraph
+  answers the preflight **204** with
+  `access-control-allow-origin: http://localhost:8080`. Both serve the same
+  schema from the same artifact, so for a browser-driven tool the gateway is
+  simply the one that works.
+  ```bash
+  for p in 4100 4110; do echo "== :$p"; curl -s -o /dev/null -D - -X OPTIONS \
+    "http://localhost:$p/graphql" -H 'Origin: http://localhost:8080' \
+    -H 'Access-Control-Request-Method: POST' | grep -i -E '^HTTP|access-control'; done
+  ```
+
+And remember what a green Laboratory run does **not** prove: it reads the
+registry, so it says nothing about whether any runtime has picked the schema up.
+For that, `scripts/supergraph-version.sh`.
+
 ## Upgrading
 
 ```bash
@@ -306,6 +429,7 @@ release.
 | Router logs `No supergraph available yet` then recovers | Normal startup race — it answers one request before the first poll completes. Only a problem if `supergraph loaded successfully` never appears. |
 | Router 503s forever, endpoint reads `UNSET-see-README-step-5` | `HIVE_CDN_ENDPOINT` / `HIVE_CDN_KEY` missing from `.env`. |
 | `401` from the artifact endpoint | Wrong CDN key, or it was issued before `CDN_AUTH_PRIVATE_KEY` changed. |
+| `403` from the artifact endpoint, router loops on `failed to load supergraph`, queries return `NO_SUPERGRAPH_AVAILABLE` | `HIVE_CDN_ENDPOINT` ends with the target name instead of its UUID. |
 | Router cannot reach the artifact endpoint | Using `localhost:8082` instead of `server:3001`. |
 | CLI: `access token does not have permission` | Token missing Publish/Check/Push, or `--target` not passed. |
 | Login page loads, signing in shows **"Failed to fetch"** | `server` never started. Check `docker compose ps server` — `Created` means `migrations` failed. Run `./hive-console/sync-db-password.sh`. |
@@ -313,4 +437,11 @@ release.
 | `migrations` exits non-zero for some other reason | Read `docker compose logs migrations` before destroying anything. |
 | Login fails after regenerating `.env`, with a server error | `SUPERTOKENS_*` changed, invalidating sessions. Clear cookies for `localhost:8080`. |
 | Credentials rejected for an account that used to work | The accounts are rows in PostgreSQL; deleting `.hive/` deleted them. `.local-dev-account` is then stale — sign up again. `select count(*) from users` to confirm. |
+| `supergraph-compose` exits 0 but the published SDL lacks your change | The composer image COPYs `subgraphs/src`, so it must be rebuilt: `run --rm --build supergraph-compose`. Silent, and it poisons every later gate. |
+| Hive Gateway on `:4110` looks stuck on the old schema | It reloads **silently** — no log line at all — a poll behind the router. Query it or run `scripts/supergraph-version.sh`; never grep its log. |
+| Laboratory autocompletes but Run does nothing / errors | `targets.graphql_endpoint_url` is NULL, or it points at `:4100` and the browser's CORS preflight fails. Set it to `http://localhost:4110/graphql`. |
+| `Invalid token provided` from `:8082/graphql` | The registry token is not an organization access token. Don't use the public API for this; read the CDN response headers. |
+| `hive whoami` rejects a token that publishes fine | With no `--registry.endpoint` it queries Hive **Cloud**. |
+| `hive introspect http://hive-router:4000/graphql` → `ENOTFOUND` | `hive-cli` used to join only the `stack` network. It now joins `default` too; re-pull the overlay if an old copy is in use. |
+| A runtime serves the wrong schema and nothing logs an error | Nothing reports a loaded version; compare fingerprints with `scripts/supergraph-version.sh`. |
 | Everything very slow | 24 containers. Raise Docker Desktop memory, or run Console without the POC. |

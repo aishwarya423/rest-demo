@@ -22,6 +22,9 @@ docker compose -f docker-compose.yml -f docker-compose.console.yml \
 docker compose -f docker-compose.yml -f docker-compose.console.yml \
   run --rm hive-cli hive/publish.sh
 
-
+follow Self-hosted Hive Console steps from readme
 Tear down
  in readme
+
+
+8. Start the registry-sourced router

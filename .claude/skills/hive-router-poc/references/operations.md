@@ -17,6 +17,7 @@
 | 4000 | Hive Router, supergraph from a file — the base POC |
 | 4100 | Hive Router, supergraph from the registry (`registry` profile) |
 | 4010 | Hive Gateway with Router's planner (`compare` profile) |
+| 4110 | Hive Gateway, supergraph from the CDN (`gateway-cdn` profile) |
 | 4001 / 4002 / 4003 | accounts / policies / funds subgraphs |
 | 3001 / 3003 / 3002 | accounts / policies / funds REST services |
 | 6379 | Valkey — the POC's response cache |
@@ -46,7 +47,15 @@ docker compose -f docker-compose.yml -f docker-compose.console.yml \
 
 # add the Gateway comparison runtime on :4010
 docker compose -f docker-compose.yml --profile compare up -d
+
+# add Hive Gateway consuming the same CDN artifact as :4100, on :4110
+docker compose -f docker-compose.yml -f docker-compose.console.yml \
+  --profile gateway-cdn up -d hive-gateway-cdn
 ```
+
+`REGISTRY_ROUTER_PORT` and `CDN_GATEWAY_PORT` override the host ports of the
+two CDN-sourced runtimes, so either can take over `:4000` for a like-for-like
+demo against the file-sourced router. Stop `hive-router` first.
 
 Tear down:
 
@@ -65,6 +74,22 @@ database password before starting — idempotent, and a no-op when nothing drift
 
 `supergraph-compose` and `migrations` exit 0 by design. A container listed as
 `Exited (0)` is a completed one-shot job, not a failure.
+
+To see which supergraph each runtime is actually serving — no runtime reports
+its own version, so this compares canonical schema fingerprints:
+
+```bash
+./scripts/supergraph-version.sh            # from the repository root
+```
+
+And to exercise the whole registry -> CDN -> runtime path as a test, including
+the window where `:4100` has a new field and `:4000` does not:
+
+```bash
+./scripts/test-supergraph-lifecycle.sh     # --dry-run stops before publishing
+```
+
+Full walkthrough in `Docs/SUPERGRAPH-CDN-LIFECYCLE.md`.
 
 ## The demo script
 
@@ -165,6 +190,8 @@ subgraph responses (not router responses).
 | Router serves an old schema | The host-side `supergraph.graphql` is stale — the router reads the Docker volume. Re-run `supergraph-compose` and restart the router |
 | `GET /accounts/{id}/funds` 500s | Known mock bug, not ours. Use `Account.fundHoldings.fund` |
 | Cache never hits | Check Valkey is reachable; cache errors are logged, not thrown, so a dead Redis looks like a permanent miss |
+| A field is published but `:4000` rejects it | `:4000` reads the supergraph file at startup only. `docker compose restart hive-router`. `:4100`/`:4110` need nothing |
+| `supergraph-compose` exits 0 but the change is missing | The composer image bakes in `subgraphs/src`; re-run it with `--build` |
 | Console login page loads but shows "Failed to fetch" | `server` never started — almost always `migrations` failing on a Postgres password that drifted from `.env`. `./hive-console/sync-db-password.sh`. Full explanation in `references/console.md` |
 
 Reading the volume the router actually serves:

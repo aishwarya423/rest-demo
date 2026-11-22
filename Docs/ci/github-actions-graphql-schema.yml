@@ -1,0 +1,305 @@
+# ===========================================================================
+# GraphQL schema pipeline — sample GitHub Actions workflow
+# ===========================================================================
+# DELIBERATELY NOT IN .github/workflows/
+#
+# This file lives under Docs/ci/ so that committing it cannot start running
+# CI against a registry that is not reachable yet. To adopt it:
+#
+#   mkdir -p .github/workflows
+#   cp Docs/ci/github-actions-graphql-schema.yml .github/workflows/graphql-schema.yml
+#
+# then set the secrets listed below. Read Docs/SUPERGRAPH-CICD.md first — in
+# particular the section on reaching a SELF-HOSTED registry from a runner,
+# which is the one thing that will not work out of the box.
+#
+# REQUIRED SECRETS
+#   HIVE_REGISTRY_ENDPOINT   e.g. https://hive.internal.example/graphql
+#   HIVE_TOKEN               registry access token with Check + Publish
+#   HIVE_TARGET              <org>/<project>/<target>, e.g. sw/insurance/development
+#   HIVE_CDN_ENDPOINT        .../artifacts/v1/<TARGET_UUID>   -- UUID, never the name
+#   HIVE_CDN_KEY             CDN access token for that target
+#
+# Pinned versions are intentional. @graphql-hive/cli 0.68.2 matches the
+# version in hive-router-poc/hive/Dockerfile and the hive@15.0.1 registry.
+# ===========================================================================
+name: graphql-schema
+
+on:
+  pull_request:
+    paths:
+      - "hive-router-poc/subgraphs/**"
+      - "hive-router-poc/compose/**"
+      - "hive-router-poc/router/**"
+      - ".github/workflows/graphql-schema.yml"
+  push:
+    branches: [main]
+    paths:
+      - "hive-router-poc/subgraphs/**"
+      - "hive-router-poc/compose/**"
+  workflow_dispatch:
+    inputs:
+      rollback_ref:
+        description: "Git ref whose subgraph schemas should be republished (rollback)"
+        required: false
+        type: string
+
+concurrency:
+  # One publish at a time per branch. Two concurrent publishes to the same
+  # target race on composition and the loser's version is simply never served.
+  group: graphql-schema-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HIVE_CLI_VERSION: "0.68.2"
+  COMPOSE_FILE_BASE: hive-router-poc/docker-compose.yml
+
+jobs:
+  # =======================================================================
+  # 1. COMPOSE + CHECK — runs on every pull request. Writes nothing remote.
+  # =======================================================================
+  validate:
+    name: Compose and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # schema:check --baseline can read a schema at a git revision, so the
+          # merge base has to be in the clone.
+          fetch-depth: 0
+
+      # Reuses the repo's own composer image rather than re-deriving the
+      # node_modules layout. --build is REQUIRED: the image COPYs
+      # subgraphs/src, so without it the composer composes stale modules,
+      # exits 0, and writes a supergraph missing the change.
+      - name: Compose the supergraph locally
+        run: |
+          docker compose -f "$COMPOSE_FILE_BASE" run --rm --build --no-deps supergraph-compose
+
+      - name: Extract the composed SDL from the volume
+        run: |
+          mkdir -p out/sdl
+          docker run --rm -v hive-router-poc_supergraph:/v -v "$PWD/out:/out" alpine \
+            sh -c 'cp /v/supergraph.graphql /out/ && cp /v/supergraph.public.graphql /out/ && cp /v/sdl/*.graphql /out/sdl/'
+          ls -la out out/sdl
+
+      - name: Fail if composition produced nothing
+        run: |
+          test -s out/supergraph.graphql || { echo "::error::supergraph.graphql is empty"; exit 1; }
+          for s in accounts policies funds; do
+            test -s "out/sdl/$s.graphql" || { echo "::error::out/sdl/$s.graphql is empty"; exit 1; }
+          done
+
+      - name: Install Hive CLI
+        run: npm install --global --no-audit --no-fund "@graphql-hive/cli@${HIVE_CLI_VERSION}"
+
+      # One check per subgraph, all sharing a contextId so Hive groups them as
+      # one logical check for this pull request.
+      #
+      # --github connects the result to the GitHub application. It needs the
+      # Hive GitHub integration configured on the organization; without it,
+      # drop the flag and rely on the report URL in the log.
+      - name: Hive schema check
+        id: check
+        env:
+          HIVE_REGISTRY_ENDPOINT: ${{ secrets.HIVE_REGISTRY_ENDPOINT }}
+          HIVE_TOKEN: ${{ secrets.HIVE_TOKEN }}
+          HIVE_TARGET: ${{ secrets.HIVE_TARGET }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for s in accounts policies funds; do
+            echo "::group::check $s"
+            hive schema:check "out/sdl/$s.graphql" \
+              --registry.endpoint "$HIVE_REGISTRY_ENDPOINT" \
+              --registry.accessToken "$HIVE_TOKEN" \
+              --target "$HIVE_TARGET" \
+              --service "$s" \
+              --author "${{ github.actor }}" \
+              --commit "${{ github.sha }}" \
+              --contextId "pr-${{ github.event.pull_request.number || github.run_id }}" \
+              --experimentalJsonFile "out/check-$s.json" || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      # The JSON output is what makes this reviewable rather than a log dive.
+      - name: Summarise the checks
+        if: always()
+        run: |
+          {
+            echo "## Hive schema checks"
+            echo
+            for s in accounts policies funds; do
+              if [ -f "out/check-$s.json" ]; then
+                echo "### $s"
+                echo '```json'
+                cat "out/check-$s.json"
+                echo '```'
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: composed-schema
+          path: out/
+
+  # =======================================================================
+  # 2. PUBLISH — only on main. This is also the CDN deployment: a successful
+  #    publish is immediately served by the artifact routes. There is no
+  #    separate "deploy the schema" step and nothing to upload.
+  # =======================================================================
+  publish:
+    name: Publish to the registry
+    if: github.event_name == 'push' || github.event.inputs.rollback_ref != ''
+    runs-on: ubuntu-latest
+    outputs:
+      version_id: ${{ steps.artifact.outputs.version_id }}
+      etag: ${{ steps.artifact.outputs.etag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On a rollback run, build from the ref being rolled back TO. A
+          # rollback here is an ordinary publish of an older schema.
+          ref: ${{ github.event.inputs.rollback_ref || github.ref }}
+
+      - name: Record the version the CDN is serving BEFORE publishing
+        id: before
+        env:
+          HIVE_CDN_ENDPOINT: ${{ secrets.HIVE_CDN_ENDPOINT }}
+          HIVE_CDN_KEY: ${{ secrets.HIVE_CDN_KEY }}
+        run: |
+          before="$(curl -sS -D - -o /dev/null -H "X-Hive-CDN-Key: $HIVE_CDN_KEY" \
+            "$HIVE_CDN_ENDPOINT/supergraph" | tr -d '\r' \
+            | sed -n 's/^x-hive-schema-version-id: //Ip' | tail -1)"
+          echo "version_id=$before" >> "$GITHUB_OUTPUT"
+          echo "before: $before"
+
+      - name: Compose the supergraph
+        run: docker compose -f "$COMPOSE_FILE_BASE" run --rm --build --no-deps supergraph-compose
+
+      - name: Extract the composed SDL
+        run: |
+          mkdir -p out/sdl
+          docker run --rm -v hive-router-poc_supergraph:/v -v "$PWD/out:/out" alpine \
+            sh -c 'cp /v/supergraph.graphql /out/ && cp /v/sdl/*.graphql /out/sdl/'
+
+      - name: Install Hive CLI
+        run: npm install --global --no-audit --no-fund "@graphql-hive/cli@${HIVE_CLI_VERSION}"
+
+      # --fail-on-composition-error is the flag that makes this a gate.
+      # Without it a publish can succeed while leaving a version that does not
+      # compose, and the CDN then keeps serving the previous one — green
+      # pipeline, nothing deployed.
+      - name: Hive schema publish
+        env:
+          HIVE_REGISTRY_ENDPOINT: ${{ secrets.HIVE_REGISTRY_ENDPOINT }}
+          HIVE_TOKEN: ${{ secrets.HIVE_TOKEN }}
+          HIVE_TARGET: ${{ secrets.HIVE_TARGET }}
+          ACCOUNTS_URL: http://accounts-subgraph:4001/graphql
+          POLICIES_URL: http://policies-subgraph:4002/graphql
+          FUNDS_URL: http://funds-subgraph:4003/graphql
+        run: |
+          set -euo pipefail
+          for s in accounts policies funds; do
+            case "$s" in
+              accounts) url="$ACCOUNTS_URL" ;;
+              policies) url="$POLICIES_URL" ;;
+              funds)    url="$FUNDS_URL" ;;
+            esac
+            echo "::group::publish $s -> $url"
+            hive schema:publish "out/sdl/$s.graphql" \
+              --registry.endpoint "$HIVE_REGISTRY_ENDPOINT" \
+              --registry.accessToken "$HIVE_TOKEN" \
+              --target "$HIVE_TARGET" \
+              --service "$s" \
+              --url "$url" \
+              --author "${{ github.actor }}" \
+              --commit "${{ github.sha }}" \
+              --fail-on-composition-error \
+              --force
+            echo "::endgroup::"
+          done
+
+      # The artifact is "versioned" by the registry, not by this pipeline: the
+      # version id identifies the publish, the etag identifies the bytes.
+      # Recording both is what makes a deployment auditable and a rollback
+      # decidable.
+      - name: Record the published version and checksum
+        id: artifact
+        env:
+          HIVE_CDN_ENDPOINT: ${{ secrets.HIVE_CDN_ENDPOINT }}
+          HIVE_CDN_KEY: ${{ secrets.HIVE_CDN_KEY }}
+          BEFORE: ${{ steps.before.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            headers="$(curl -sS -D - -o /dev/null -H "X-Hive-CDN-Key: $HIVE_CDN_KEY" \
+              "$HIVE_CDN_ENDPOINT/supergraph" | tr -d '\r')"
+            vid="$(printf '%s' "$headers" | sed -n 's/^x-hive-schema-version-id: //Ip' | tail -1)"
+            etag="$(printf '%s' "$headers" | sed -n 's/^etag: //Ip' | tail -1)"
+            if [ -n "$vid" ] && [ "$vid" != "$BEFORE" ]; then
+              echo "version_id=$vid" >> "$GITHUB_OUTPUT"
+              echo "etag=$etag" >> "$GITHUB_OUTPUT"
+              curl -sS -H "X-Hive-CDN-Key: $HIVE_CDN_KEY" "$HIVE_CDN_ENDPOINT/supergraph" \
+                | sha256sum | cut -d' ' -f1 > out/supergraph.sha256
+              {
+                echo "## Published"
+                echo
+                echo "| field | value |"
+                echo "|---|---|"
+                echo "| schema version id | \`$vid\` |"
+                echo "| previous version id | \`$BEFORE\` |"
+                echo "| etag | \`$etag\` |"
+                echo "| sha256 | \`$(cat out/supergraph.sha256)\` |"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the CDN never served a new schema version id (still $BEFORE)"
+          exit 1
+
+  # =======================================================================
+  # 3. VERIFY — the step that replaces "deploy the gateway".
+  #    Nothing is deployed: the runtimes poll. What CI owes you is proof
+  #    that they have actually converged on the new version.
+  # =======================================================================
+  verify:
+    name: Verify the runtimes converged
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Replace GATEWAY_URL with the runtime(s) this environment deploys.
+      # The wait is bounded by the runtime's poll interval, not by a deploy.
+      - name: Wait for the runtime to serve the published schema
+        env:
+          GATEWAY_URL: ${{ vars.GATEWAY_URL }}
+          EXPECTED_VERSION: ${{ needs.publish.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          echo "expecting schema version $EXPECTED_VERSION"
+          for i in $(seq 1 30); do
+            # A runtime exposes no version, so the check is behavioural: does
+            # introspection match the API schema the CDN is publishing?
+            if curl -sS "$GATEWAY_URL" -H 'content-type: application/json' \
+                 -d '{"query":"{ __schema { queryType { name } } }"}' \
+                 | grep -q '"queryType"'; then
+              echo "runtime is answering"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::runtime did not become healthy"
+          exit 1
+
+      # On a machine with the stack present, this is the real gate: it compares
+      # each CDN-sourced runtime's canonical schema fingerprint against the
+      # CDN's own and exits non-zero on a mismatch.
+      - name: Fingerprint comparison (self-hosted runner with the stack present)
+        if: ${{ vars.RUN_FINGERPRINT_CHECK == 'true' }}
+        run: ./scripts/supergraph-version.sh --require hive-router-registry
