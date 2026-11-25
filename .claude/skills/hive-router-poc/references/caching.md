@@ -97,9 +97,10 @@ this setting first.
 ## Settings that must not be changed casually
 
 **`buildRedisEntityId` is left at its default (`Typename:id`).** Type-level
-invalidation runs `KEYS <Typename>:*`. Prefixing entity ids would make that
-pattern match nothing, and the failure is silent: purges would report success
-and purge nothing. The comment in `cache.mjs` says this; keep it there.
+invalidation matches the pattern `<Typename>:*` — with `SCAN ... MATCH`, not
+`KEYS`; see the note further down. Prefixing entity ids would make that pattern
+match nothing, and the failure is silent: purges would report success and purge
+nothing. The comment in `cache.mjs` says this; keep it there.
 
 **`buildRedisOperationResultCacheKey` is `ops:<responseId>`.** Used symmetrically
 on write and on invalidate, so changing it is safe *provided* the invalidator's
